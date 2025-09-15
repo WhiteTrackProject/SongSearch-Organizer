@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from textwrap import dedent
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 @dataclass(frozen=True)
@@ -308,6 +309,22 @@ def _build_stylesheet(colors: PremiumColors) -> str:
         }}
         """
     ).strip()
+
+
+def ensure_styled_background(widget: QWidget, *, minimum_width: int | None = None) -> None:
+    """Enable styled backgrounds for widgets participating in the premium theme.
+
+    Qt only respects background colors from stylesheets for widgets that opt into
+    styled backgrounds. This helper centralizes that configuration so views like
+    the details panel or card containers can participate in the premium look
+    without scattering ``WA_StyledBackground`` boilerplate across the codebase.
+    A minimum width may be supplied for widgets that require additional layout
+    breathing room.
+    """
+
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    if minimum_width is not None:
+        widget.setMinimumWidth(minimum_width)
 
 
 def apply_premium_theme(app: QApplication) -> None:

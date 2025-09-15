@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
 from .details_panel import DetailsPanel
+from .theme import ensure_styled_background
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ class MainWindow(QMainWindow):
 
         table_card = QFrame(splitter)
         table_card.setObjectName("TableCard")
-        table_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_styled_background(table_card)
         table_layout = QVBoxLayout(table_card)
         table_layout.setContentsMargins(18, 18, 18, 18)
         table_layout.setSpacing(0)
@@ -289,7 +290,7 @@ class MainWindow(QMainWindow):
 
         details_card = QFrame(splitter)
         details_card.setObjectName("DetailsCard")
-        details_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_styled_background(details_card)
         details_layout = QVBoxLayout(details_card)
         details_layout.setContentsMargins(18, 18, 18, 18)
         details_layout.setSpacing(0)

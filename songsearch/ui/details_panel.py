@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ..core.db import connect, get_by_path
 from ..core.metadata_enricher import enrich_file
 from ..core.spectrum import generate_spectrogram, open_external
+from .theme import ensure_styled_background
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,7 @@ class DetailsPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("DetailsPanel")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setMinimumWidth(360)
+        ensure_styled_background(self, minimum_width=360)
         self._con = con
         self._current_data: dict[str, Any] | None = None
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
