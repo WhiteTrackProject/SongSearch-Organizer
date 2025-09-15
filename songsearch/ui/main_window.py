@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import subprocess
 import sys
@@ -23,7 +24,10 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -41,6 +45,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
+
+from .. import __version__
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
 from ..core.scanner import scan_path
 from ..core.spectrum import open_external
@@ -208,6 +215,65 @@ class TrackTableModel(QAbstractTableModel):
         return str(value)
 
 
+class ApiCredentialsDialog(QDialog):
+    """Simple dialog to capture API credentials from the user."""
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        acoustid_key: str = "",
+        musicbrainz_ua: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Configurar APIs")
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self._acoustid_edit = QLineEdit(self)
+        self._acoustid_edit.setPlaceholderText("Clave de API de AcoustID")
+        self._acoustid_edit.setText(acoustid_key)
+        form.addRow("AcoustID API key", self._acoustid_edit)
+
+        self._musicbrainz_edit = QLineEdit(self)
+        self._musicbrainz_edit.setPlaceholderText(
+            f"SongSearchOrganizer/{__version__} (tu_email@ejemplo.com)"
+        )
+        self._musicbrainz_edit.setText(musicbrainz_ua)
+        form.addRow("Cuenta MusicBrainz", self._musicbrainz_edit)
+
+        layout.addLayout(form)
+
+        hint = QLabel(
+            "Introduce tu clave de AcoustID y el identificador de cuenta/contacto de MusicBrainz.",
+            self,
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_accept(self) -> None:
+        acoustid = self._acoustid_edit.text().strip()
+        musicbrainz = self._musicbrainz_edit.text().strip()
+        if not acoustid or not musicbrainz:
+            QMessageBox.warning(
+                self,
+                "Faltan datos",
+                "Debes introducir tanto la clave de AcoustID como tu cuenta/contacto de MusicBrainz.",
+            )
+            return
+        self.accept()
+
+    def values(self) -> tuple[str, str]:
+        return self._acoustid_edit.text().strip(), self._musicbrainz_edit.text().strip()
+
+
 class MainWindow(QMainWindow):
     """Main application window for the SongSearch Organizer UI."""
 
@@ -224,6 +290,8 @@ class MainWindow(QMainWindow):
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
         self._owns_connection = con is None
         self._db_path: Path | None = None
+        self._env_path = self._data_dir / ".env"
+        self._load_env_files()
         if con is None:
             db_path = init_db(self._data_dir)
             con = connect(db_path)
@@ -256,6 +324,62 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self.refresh_results()
+        QTimer.singleShot(0, self._maybe_prompt_api_credentials)
+
+    # ------------------------------------------------------------------
+    # Configuración
+    # ------------------------------------------------------------------
+    def _load_env_files(self) -> None:
+        repo_env = find_dotenv(usecwd=True)
+        if repo_env:
+            load_dotenv(repo_env, override=False)
+        if self._env_path.exists():
+            load_dotenv(self._env_path, override=False)
+
+    def _maybe_prompt_api_credentials(self) -> None:
+        stored = dotenv_values(self._env_path) if self._env_path.exists() else {}
+        api_key = os.getenv("ACOUSTID_API_KEY") or stored.get("ACOUSTID_API_KEY", "")
+        musicbrainz = os.getenv("MUSICBRAINZ_USER_AGENT") or stored.get(
+            "MUSICBRAINZ_USER_AGENT", ""
+        )
+        if api_key and musicbrainz:
+            return
+
+        dialog = ApiCredentialsDialog(self, api_key, musicbrainz)
+        if dialog.exec() == QDialog.Accepted:
+            api_key, musicbrainz = dialog.values()
+            self._save_api_credentials(api_key, musicbrainz)
+            if self._status:
+                self._status.showMessage("Credenciales guardadas", 5000)
+        else:
+            if self._status:
+                self._status.showMessage(
+                    "Configura las APIs para habilitar el enriquecimiento de metadatos.",
+                    8000,
+                )
+
+    def _save_api_credentials(self, api_key: str, musicbrainz: str) -> None:
+        try:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+            set_key(str(self._env_path), "ACOUSTID_API_KEY", api_key, quote_mode="never")
+            set_key(
+                str(self._env_path),
+                "MUSICBRAINZ_USER_AGENT",
+                musicbrainz,
+                quote_mode="never",
+            )
+        except Exception as exc:  # noqa: BLE001 - mostrar el error al usuario
+            logger.exception("No se pudieron guardar las credenciales: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Error al guardar",
+                "No se pudieron guardar las credenciales en el archivo .env.\n"
+                f"Detalle: {exc}",
+            )
+            return
+
+        os.environ["ACOUSTID_API_KEY"] = api_key
+        os.environ["MUSICBRAINZ_USER_AGENT"] = musicbrainz
 
     # ------------------------------------------------------------------
     # UI setup
