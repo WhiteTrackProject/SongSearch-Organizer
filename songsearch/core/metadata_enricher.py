@@ -1,26 +1,36 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
-import os
+
 import logging
+import os
+import threading
+import time
+from pathlib import Path
+from typing import Any
 
 import acoustid
 import musicbrainzngs
 from mutagen import File as MutagenFile
 
-from .db import update_fields
+from .db import (
+    get_by_path,
+    get_fingerprint_cache,
+    update_fields,
+    upsert_fingerprint_cache,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _init_musicbrainz():
-    ua = os.getenv("MUSICBRAINZ_USER_AGENT") or "SongSearchOrganizer/0.2 (you@example.com)"
+    ua = os.getenv("MUSICBRAINZ_USER_AGENT") or "SongSearchOrganizer/0.3 (you@example.com)"
     app, ver, contact = _parse_user_agent(ua)
     musicbrainzngs.set_useragent(app, ver, contact)
 
 
-def _parse_user_agent(ua: str) -> Tuple[str,str,str]:
-    app = "SongSearchOrganizer"; ver = "0.2"; contact = "you@example.com"
+def _parse_user_agent(ua: str) -> tuple[str, str, str]:
+    app = "SongSearchOrganizer"
+    ver = "0.3"
+    contact = "you@example.com"
     try:
         if "(" in ua and ")" in ua and "/" in ua:
             appver, contact_part = ua.split("(", 1)
@@ -37,28 +47,52 @@ def needs_enrich(row) -> bool:
     return not (row["artist"] and row["title"] and row["album"] and row["year"])
 
 
-def enrich_file(con, path: Path, min_confidence: float = 0.6, write_tags: bool = False) -> Optional[Dict[str, Any]]:
+def enrich_file(
+    con,
+    path: Path,
+    min_confidence: float = 0.6,
+    write_tags: bool = False,
+) -> dict[str, Any] | None:
     api_key = os.getenv("ACOUSTID_API_KEY")
     if not api_key:
         raise RuntimeError("Falta ACOUSTID_API_KEY en .env")
     _init_musicbrainz()
+    track_row = get_by_path(con, str(path))
+    mtime = float(track_row["mtime"]) if track_row and track_row["mtime"] is not None else None
+    file_size = (
+        int(track_row["file_size"]) if track_row and track_row["file_size"] is not None else None
+    )
+
+    cached = get_fingerprint_cache(con, str(path), mtime, file_size)
+    if cached and cached.get("mb_confidence") is not None:
+        if float(cached["mb_confidence"]) >= float(min_confidence):
+            payload = cached["payload"]
+            updates = _apply_updates(con, path, payload, write_tags)
+            return updates
+
     update_fields(con, str(path), {"fp_status": "pending"})
-    best: Optional[Dict[str, Any]] = None
+    best: dict[str, Any] | None = None
     try:
         for score, acoustid_id, rid, title, artist in _acoustid_match(api_key, path):
-            rec = musicbrainzngs.get_recording_by_id(rid, includes=["artists","releases","release-groups"])["recording"]
+            rec = _call_musicbrainz(
+                musicbrainzngs.get_recording_by_id,
+                rid,
+                includes=["artists", "releases", "release-groups"],
+            )["recording"]
             release, rel_group = _pick_best_release(rec.get("release-list", []))
             if not release:
                 continue
             album = release.get("title")
-            album_artist = _join_artist_credit(release.get("artist-credit") or rec.get("artist-credit"))
+            album_artist = _join_artist_credit(
+                release.get("artist-credit") or rec.get("artist-credit")
+            )
             date = release.get("date") or rel_group.get("first-release-date")
             year = _parse_year(date)
             track_no = release.get("medium-list", [{}])[0].get("track-list", [{}])[0].get("number")
             disc_no = release.get("medium-list", [{}])[0].get("position")
             cover_url = None
             try:
-                imgs = musicbrainzngs.get_image_list(release["id"])
+                imgs = _call_musicbrainz(musicbrainzngs.get_image_list, release["id"])
                 for img in imgs.get("images", []):
                     if img.get("front"):
                         cover_url = img.get("image")
@@ -91,48 +125,23 @@ def enrich_file(con, path: Path, min_confidence: float = 0.6, write_tags: bool =
         update_fields(con, str(path), {"fp_status": "done"})
         return None
 
-    updates = {
-        "title": best["title"],
-        "artist": best["artist"],
-        "album": best["album"],
-        "album_artist": best["album_artist"],
-        "year": best["year"],
-        "track_no": best["track_no"],
-        "disc_no": best["disc_no"],
-        "fp_status": "done",
-        "acoustid_id": best["acoustid_id"],
-        "mb_recording_id": best["mb_recording_id"],
-        "mb_release_id": best["mb_release_id"],
-        "mb_release_group_id": best["mb_release_group_id"],
-        "mb_confidence": best["mb_confidence"],
-        "cover_art_url": best["cover_art_url"],
-    }
-    update_fields(con, str(path), updates)
-
-    if write_tags:
-        try:
-            mf = MutagenFile(str(path), easy=True)
-            if mf is not None:
-                if best["title"]: mf["title"] = [best["title"]]
-                if best["artist"]: mf["artist"] = [best["artist"]]
-                if best["album"]: mf["album"] = [best["album"]]
-                if best["album_artist"]: mf["albumartist"] = [best["album_artist"]]
-                if best["year"]: mf["date"] = [str(best["year"])]
-                if best["track_no"]: mf["tracknumber"] = [str(best["track_no"])]
-                if best["disc_no"]: mf["discnumber"] = [str(best["disc_no"])]
-                mf.save()
-        except Exception as e:
-            logger.warning("cannot write tags for %s: %s", path, e)
+    updates = _apply_updates(con, path, best, write_tags)
+    upsert_fingerprint_cache(con, str(path), mtime, file_size, best)
     return updates
 
 
-def enrich_db(con, limit: int = 100, min_confidence: float = 0.6, write_tags: bool = False) -> List[Dict[str, Any]]:
-    rows = con.execute("""
+def enrich_db(
+    con, limit: int = 100, min_confidence: float = 0.6, write_tags: bool = False
+) -> list[dict[str, Any]]:
+    rows = con.execute(
+        """
         SELECT * FROM tracks
         WHERE (artist IS NULL OR title IS NULL OR album IS NULL OR year IS NULL)
         AND missing=0
         ORDER BY id DESC LIMIT ?
-    """, (limit,)).fetchall()
+    """,
+        (limit,),
+    ).fetchall()
     results = []
     for r in rows:
         p = Path(r["path"])
@@ -146,7 +155,19 @@ def enrich_db(con, limit: int = 100, min_confidence: float = 0.6, write_tags: bo
 
 
 def _acoustid_match(api_key: str, path: Path):
-    response = acoustid.match(api_key, str(path), parse=False)
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            _acoustid_limiter.wait()
+            response = acoustid.match(api_key, str(path), parse=False)
+            break
+        except acoustid.WebServiceError as exc:
+            if attempt >= 3:
+                raise
+            backoff = min(4.0, 2.0**attempt)
+            logger.warning("acoustid rate/backoff triggered (%s), sleeping %.1fs", exc, backoff)
+            time.sleep(backoff)
     status = response.get("status")
     if status != "ok":
         raise acoustid.WebServiceError(f"status: {status}")
@@ -177,7 +198,76 @@ def _acoustid_match(api_key: str, path: Path):
             yield score, acoustid_id, recording_id, recording.get("title"), artist_name
 
 
-def _join_artist_credit(credit_list) -> Optional[str]:
+def _call_musicbrainz(func, *args, **kwargs):
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            _mb_limiter.wait()
+            return func(*args, **kwargs)
+        except musicbrainzngs.NetworkError as exc:
+            if attempt >= 3:
+                raise
+            backoff = min(4.0, 2.0**attempt)
+            logger.warning(
+                "musicbrainz network issue (%s), retrying in %.1fs",
+                exc,
+                backoff,
+            )
+            time.sleep(backoff)
+
+
+def _apply_updates(con, path: Path, payload: dict[str, Any], write_tags: bool) -> dict[str, Any]:
+    updates = {
+        "title": payload.get("title"),
+        "artist": payload.get("artist"),
+        "album": payload.get("album"),
+        "album_artist": payload.get("album_artist"),
+        "year": payload.get("year"),
+        "track_no": payload.get("track_no"),
+        "disc_no": payload.get("disc_no"),
+        "fp_status": "done",
+        "acoustid_id": payload.get("acoustid_id"),
+        "mb_recording_id": payload.get("mb_recording_id"),
+        "mb_release_id": payload.get("mb_release_id"),
+        "mb_release_group_id": payload.get("mb_release_group_id"),
+        "mb_confidence": payload.get("mb_confidence"),
+        "cover_art_url": payload.get("cover_art_url"),
+    }
+    update_fields(con, str(path), updates)
+
+    if write_tags:
+        try:
+            mf = MutagenFile(str(path), easy=True)
+            if mf is not None:
+                title = payload.get("title")
+                artist = payload.get("artist")
+                album = payload.get("album")
+                album_artist = payload.get("album_artist")
+                year = payload.get("year")
+                track_no = payload.get("track_no")
+                disc_no = payload.get("disc_no")
+                if title:
+                    mf["title"] = [str(title)]
+                if artist:
+                    mf["artist"] = [str(artist)]
+                if album:
+                    mf["album"] = [str(album)]
+                if album_artist:
+                    mf["albumartist"] = [str(album_artist)]
+                if year:
+                    mf["date"] = [str(year)]
+                if track_no:
+                    mf["tracknumber"] = [str(track_no)]
+                if disc_no:
+                    mf["discnumber"] = [str(disc_no)]
+                mf.save()
+        except Exception as exc:
+            logger.warning("cannot write tags for %s: %s", path, exc)
+    return updates
+
+
+def _join_artist_credit(credit_list) -> str | None:
     if not credit_list:
         return None
     parts = []
@@ -189,18 +279,20 @@ def _join_artist_credit(credit_list) -> Optional[str]:
     return "".join(parts) if parts else None
 
 
-def _pick_best_release(releases: List[Dict[str, Any]]):
+def _pick_best_release(releases: list[dict[str, Any]]):
     if not releases:
         return None, None
+
     def rel_key(r):
         d = r.get("date") or ""
-        return (d or "9999-99-99")
+        return d or "9999-99-99"
+
     best = sorted(releases, key=rel_key)[0]
     rel_group = best.get("release-group") or {}
     return best, rel_group
 
 
-def _parse_year(date: Optional[str]) -> Optional[int]:
+def _parse_year(date: str | None) -> int | None:
     if not date:
         return None
     try:
@@ -214,3 +306,27 @@ def _to_int(v):
         return int(v)
     except Exception:
         return None
+
+
+_ACOUSTID_INTERVAL = 1.1
+_MB_INTERVAL = 1.1
+
+
+class _RateLimiter:
+    def __init__(self, interval: float) -> None:
+        self._interval = interval
+        self._lock = threading.Lock()
+        self._last = 0.0
+
+    def wait(self) -> None:
+        with self._lock:
+            now = time.time()
+            delay = self._interval - (now - self._last)
+            if delay > 0:
+                time.sleep(delay)
+                now = time.time()
+            self._last = now
+
+
+_acoustid_limiter = _RateLimiter(_ACOUSTID_INTERVAL)
+_mb_limiter = _RateLimiter(_MB_INTERVAL)

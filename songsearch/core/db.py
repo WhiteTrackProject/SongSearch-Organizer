@@ -1,8 +1,13 @@
 from __future__ import annotations
+
+import hashlib
+import json
 import re
 import sqlite3
+import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Dict, Any, Tuple
+from typing import Any
 
 DB_FILENAME = "songsearch.db"
 
@@ -44,9 +49,22 @@ CREATE TABLE IF NOT EXISTS tracks (
 CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
     title, artist, album, genre, path
 );
+
+CREATE TABLE IF NOT EXISTS fingerprint_cache (
+    path_hash TEXT PRIMARY KEY,
+    mtime REAL,
+    file_size INTEGER,
+    acoustid_id TEXT,
+    mb_recording_id TEXT,
+    mb_release_id TEXT,
+    mb_release_group_id TEXT,
+    mb_confidence REAL,
+    payload TEXT NOT NULL,
+    cached_at REAL NOT NULL
+);
 """
 
-MIGRATION_COLUMNS: Tuple[Tuple[str, str], ...] = (
+MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
     ("album_artist", "TEXT"),
     ("track_no", "INTEGER"),
     ("disc_no", "INTEGER"),
@@ -68,19 +86,23 @@ def connect(db_path: Path) -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     return con
 
+
 def _table_has_column(con: sqlite3.Connection, table: str, column: str) -> bool:
     cur = con.execute(f"PRAGMA table_info({table})")
     return any(r["name"] == column for r in cur.fetchall())
 
+
 def _run_schema(con: sqlite3.Connection):
     with con:
         con.executescript(BASE_SCHEMA)
+
 
 def _migrate_columns(con: sqlite3.Connection):
     for col, ctype in MIGRATION_COLUMNS:
         if not _table_has_column(con, "tracks", col):
             with con:
                 con.execute(f"ALTER TABLE tracks ADD COLUMN {col} {ctype}")
+
 
 def init_db(db_dir: Path) -> Path:
     db_dir.mkdir(parents=True, exist_ok=True)
@@ -104,33 +126,69 @@ def fts_query_from_text(text: str) -> str | None:
         return None
     return " ".join(f"{token}*" for token in tokens)
 
-def upsert_track(con: sqlite3.Connection, data: Dict[str, Any]) -> int:
+
+def upsert_track(con: sqlite3.Connection, data: dict[str, Any]) -> int:
     cur = con.execute("PRAGMA table_info(tracks)")
     cols = [r["name"] for r in cur.fetchall()]
-    fields = [k for k in (
-        "path","title","artist","album","album_artist","year","genre",
-        "track_no","disc_no","duration","bitrate","samplerate","channels","format",
-        "mtime","file_size","missing","fp_status","acoustid_id","mb_recording_id",
-        "mb_release_id","mb_release_group_id","mb_confidence","cover_art_url"
-    ) if k in cols and k in data]
+    fields = [
+        k
+        for k in (
+            "path",
+            "title",
+            "artist",
+            "album",
+            "album_artist",
+            "year",
+            "genre",
+            "track_no",
+            "disc_no",
+            "duration",
+            "bitrate",
+            "samplerate",
+            "channels",
+            "format",
+            "mtime",
+            "file_size",
+            "missing",
+            "fp_status",
+            "acoustid_id",
+            "mb_recording_id",
+            "mb_release_id",
+            "mb_release_group_id",
+            "mb_confidence",
+            "cover_art_url",
+        )
+        if k in cols and k in data
+    ]
     placeholders = ",".join("?" for _ in fields)
     values = [data.get(k) for k in fields]
 
     with con:
-        con.execute(f"""
-            INSERT INTO tracks ({','.join(fields)})
+        con.execute(
+            f"""
+            INSERT INTO tracks ({",".join(fields)})
             VALUES ({placeholders})
             ON CONFLICT(path) DO UPDATE SET
-              {','.join(f'{k}=excluded.{k}' for k in fields if k != 'path')}
-        """, values)
+              {",".join(f"{k}=excluded.{k}" for k in fields if k != "path")}
+        """,
+            values,
+        )
         rowid = con.execute("SELECT id FROM tracks WHERE path=?", (data["path"],)).fetchone()["id"]
         con.execute("DELETE FROM tracks_fts WHERE path=?", (data["path"],))
-        con.execute("INSERT INTO tracks_fts (title,artist,album,genre,path) VALUES (?,?,?,?,?)",
-                    (data.get("title"), data.get("artist"), data.get("album"),
-                     data.get("genre"), data.get("path")))
+        con.execute(
+            "INSERT INTO tracks_fts (title,artist,album,genre,path) VALUES (?,?,?,?,?)",
+            (
+                data.get("title"),
+                data.get("artist"),
+                data.get("album"),
+                data.get("genre"),
+                data.get("path"),
+            ),
+        )
     return rowid
 
-def update_fields(con: sqlite3.Connection, path: str, updates: Dict[str, Any]):
+
+def update_fields(con: sqlite3.Connection, path: str, updates: dict[str, Any]):
     if not updates:
         return
     old_path = path
@@ -138,17 +196,25 @@ def update_fields(con: sqlite3.Connection, path: str, updates: Dict[str, Any]):
     cols = list(updates.keys())
     vals = [updates[c] for c in cols]
     with con:
-        con.execute(f"UPDATE tracks SET {', '.join(c+'=?' for c in cols)} WHERE path=?", (*vals, old_path))
-        r = con.execute("SELECT title,artist,album,genre,path FROM tracks WHERE path=?", (new_path,)).fetchone()
+        con.execute(
+            f"UPDATE tracks SET {', '.join(c + '=?' for c in cols)} WHERE path=?", (*vals, old_path)
+        )
+        r = con.execute(
+            "SELECT title,artist,album,genre,path FROM tracks WHERE path=?", (new_path,)
+        ).fetchone()
         if r:
             con.execute("DELETE FROM tracks_fts WHERE path=?", (old_path,))
-            con.execute("INSERT INTO tracks_fts (title,artist,album,genre,path) VALUES (?,?,?,?,?)",
-                        (r["title"], r["artist"], r["album"], r["genre"], r["path"]))
+            con.execute(
+                "INSERT INTO tracks_fts (title,artist,album,genre,path) VALUES (?,?,?,?,?)",
+                (r["title"], r["artist"], r["album"], r["genre"], r["path"]),
+            )
+
 
 def get_by_path(con: sqlite3.Connection, path: str) -> sqlite3.Row | None:
     """Return the track row for *path* or ``None`` if it doesn't exist."""
 
     return con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()
+
 
 def query_tracks(
     con: sqlite3.Connection,
@@ -169,3 +235,67 @@ def query_tracks(
         sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY artist, album, title"
     return con.execute(sql, tuple(sql_params)).fetchall()
+
+
+def _fingerprint_key(path: str) -> str:
+    return hashlib.blake2b(path.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def get_fingerprint_cache(
+    con: sqlite3.Connection,
+    path: str,
+    mtime: float | None,
+    file_size: int | None,
+) -> dict[str, Any] | None:
+    row = con.execute(
+        "SELECT * FROM fingerprint_cache WHERE path_hash=?",
+        (_fingerprint_key(path),),
+    ).fetchone()
+    if not row:
+        return None
+    if mtime is not None and row["mtime"] is not None and float(row["mtime"]) != float(mtime):
+        return None
+    if (
+        file_size is not None
+        and row["file_size"] is not None
+        and int(row["file_size"]) != int(file_size)
+    ):
+        return None
+    payload = json.loads(row["payload"])
+    return {
+        **dict(row),
+        "payload": payload,
+    }
+
+
+def upsert_fingerprint_cache(
+    con: sqlite3.Connection,
+    path: str,
+    mtime: float | None,
+    file_size: int | None,
+    payload: dict[str, Any],
+) -> None:
+    data = {
+        "path_hash": _fingerprint_key(path),
+        "mtime": mtime,
+        "file_size": file_size,
+        "acoustid_id": payload.get("acoustid_id"),
+        "mb_recording_id": payload.get("mb_recording_id"),
+        "mb_release_id": payload.get("mb_release_id"),
+        "mb_release_group_id": payload.get("mb_release_group_id"),
+        "mb_confidence": payload.get("mb_confidence"),
+        "payload": json.dumps(payload, ensure_ascii=False),
+        "cached_at": time.time(),
+    }
+    columns = ", ".join(data.keys())
+    placeholders = ", ".join(["?"] * len(data))
+    assignments = ", ".join(f"{key}=excluded.{key}" for key in data.keys() if key != "path_hash")
+    with con:
+        con.execute(
+            f"""
+            INSERT INTO fingerprint_cache ({columns})
+            VALUES ({placeholders})
+            ON CONFLICT(path_hash) DO UPDATE SET {assignments}
+            """,
+            tuple(data.values()),
+        )

@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import logging
 import sqlite3
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Callable
+from typing import Any
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -445,4 +447,3 @@ class DetailsPanel(QWidget):
             return Path(path_str)
         except Exception:  # pragma: no cover - fallback for exotic paths
             return None
-

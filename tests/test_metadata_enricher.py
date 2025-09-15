@@ -37,7 +37,9 @@ def test_enrich_file_persists_acoustid_id(monkeypatch: pytest.MonkeyPatch, tmp_p
         ],
     }
 
-    def fake_match(apikey, path, meta=metadata_enricher.acoustid.DEFAULT_META, parse=True, **kwargs):
+    def fake_match(
+        apikey, path, meta=metadata_enricher.acoustid.DEFAULT_META, parse=True, **kwargs
+    ):
         assert apikey == "token"
         assert parse is False
         return acoustid_response
@@ -66,8 +68,12 @@ def test_enrich_file_persists_acoustid_id(monkeypatch: pytest.MonkeyPatch, tmp_p
         }
 
     monkeypatch.setattr(metadata_enricher.acoustid, "match", fake_match)
-    monkeypatch.setattr(metadata_enricher.musicbrainzngs, "get_recording_by_id", fake_recording_by_id)
-    monkeypatch.setattr(metadata_enricher.musicbrainzngs, "get_image_list", lambda release_id: {"images": []})
+    monkeypatch.setattr(
+        metadata_enricher.musicbrainzngs, "get_recording_by_id", fake_recording_by_id
+    )
+    monkeypatch.setattr(
+        metadata_enricher.musicbrainzngs, "get_image_list", lambda release_id: {"images": []}
+    )
 
     updates = metadata_enricher.enrich_file(con, track_path)
 

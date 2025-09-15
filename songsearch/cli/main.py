@@ -1,19 +1,21 @@
 from __future__ import annotations
+
+import logging
+import os
 from pathlib import Path
 from typing import Literal
-import os
-import typer
-from rich.table import Table
-from rich.logging import RichHandler
-from dotenv import load_dotenv
-import logging
 
-from ..core.db import init_db, connect
-from ..core.scanner import scan_path
-from ..core.organizer import simulate, export_csv, apply_plan, undo_from_log
-from ..core.spectrum import generate_spectrogram, open_external
-from ..core.metadata_enricher import enrich_db
+import typer
+from dotenv import load_dotenv
+from rich.logging import RichHandler
+from rich.table import Table
+
+from ..core.db import connect, init_db
 from ..core.duplicates import find_duplicates, resolve_move_others
+from ..core.metadata_enricher import enrich_db
+from ..core.organizer import apply_plan, export_csv, simulate, undo_from_log
+from ..core.scanner import scan_path
+from ..core.spectrum import generate_spectrogram, open_external
 
 app = typer.Typer(help="SongSearch Organizer CLI")
 load_dotenv()
@@ -39,10 +41,18 @@ def organize(
     mode: str = typer.Option("simulate", "--mode", help="simulate|move|copy|link"),
     dest: str = typer.Option(..., "--dest", help="Carpeta destino"),
     export: bool = typer.Option(True, "--export/--no-export", help="Exportar CSV de plan"),
-    require_cover: bool = typer.Option(False, "--require-cover/--no-require-cover", help="Solo incluir pistas con cover"),
-    require_year: bool = typer.Option(False, "--require-year/--no-require-year", help="Solo incluir pistas con año"),
-    album_mode: Literal["tags", "mb-release"] = typer.Option("tags", "--album-mode", help="tags|mb-release"),
-    fallback_tags: bool = typer.Option(False, "--fallback-tags/--no-fallback-tags", help="Si falta MB release usa tags"),
+    require_cover: bool = typer.Option(
+        False, "--require-cover/--no-require-cover", help="Solo incluir pistas con cover"
+    ),
+    require_year: bool = typer.Option(
+        False, "--require-year/--no-require-year", help="Solo incluir pistas con año"
+    ),
+    album_mode: Literal["tags", "mb-release"] = typer.Option(
+        "tags", "--album-mode", help="tags|mb-release"
+    ),
+    fallback_tags: bool = typer.Option(
+        False, "--fallback-tags/--no-fallback-tags", help="Si falta MB release usa tags"
+    ),
 ):
     tpl = _load_template(template)
     con = connect(DB_PATH)
@@ -75,7 +85,7 @@ def undo():
 @app.command()
 def spectrum(
     input: str = typer.Option(..., "--input", help="Archivo de audio"),
-    open_external_app: bool = typer.Option(False, "--open-external", help="Abrir en app externa")
+    open_external_app: bool = typer.Option(False, "--open-external", help="Abrir en app externa"),
 ):
     p = Path(input)
     if open_external_app:
@@ -91,7 +101,9 @@ def spectrum(
 def enrich(
     limit: int = typer.Option(100, "--limit", help="Máximo de pistas a procesar"),
     min_confidence: float = typer.Option(0.6, "--min-confidence", help="Umbral de confianza (0-1)"),
-    write_tags: bool = typer.Option(False, "--write-tags/--no-write-tags", help="Escribir tags al archivo además de la DB")
+    write_tags: bool = typer.Option(
+        False, "--write-tags/--no-write-tags", help="Escribir tags al archivo además de la DB"
+    ),
 ):
     con = connect(DB_PATH)
     rows = enrich_db(con, limit=limit, min_confidence=min_confidence, write_tags=write_tags)
@@ -106,18 +118,30 @@ def enrich(
     table.add_column("Año")
     table.add_column("Conf.")
     for r in rows:
-        table.add_row(r["path"], str(r.get("title") or ""), str(r.get("artist") or ""),
-                      str(r.get("album") or ""), str(r.get("year") or ""), f"{r.get('mb_confidence', 0):.2f}")
+        table.add_row(
+            r["path"],
+            str(r.get("title") or ""),
+            str(r.get("artist") or ""),
+            str(r.get("album") or ""),
+            str(r.get("year") or ""),
+            f"{r.get('mb_confidence', 0):.2f}",
+        )
     logger.info(table)
 
 
 @app.command()
 def dupes(
-    move_to: str = typer.Option("", "--move-to", help="Si se indica, mueve duplicados (excepto el mejor) a esta carpeta"),
-    preview: bool = typer.Option(True, "--preview/--no-preview", help="Mostrar grupos por pantalla")
+    move_to: str = typer.Option(
+        "", "--move-to", help="Si se indica, mueve duplicados (excepto el mejor) a esta carpeta"
+    ),
+    preview: bool = typer.Option(
+        True, "--preview/--no-preview", help="Mostrar grupos por pantalla"
+    ),
 ):
     con = connect(DB_PATH)
-    rows = con.execute("SELECT * FROM tracks WHERE duration IS NOT NULL AND file_size IS NOT NULL AND missing=0").fetchall()
+    rows = con.execute(
+        "SELECT * FROM tracks WHERE duration IS NOT NULL AND file_size IS NOT NULL AND missing=0"
+    ).fetchall()
     groups = find_duplicates(rows)
     logger.info("%d grupos de posibles duplicados.", len(groups))
     if preview:
@@ -142,6 +166,7 @@ def dupes(
 
 def _load_template(name: str) -> str:
     import yaml
+
     cfg_p = Path("config/templates.yml")
     try:
         data = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))

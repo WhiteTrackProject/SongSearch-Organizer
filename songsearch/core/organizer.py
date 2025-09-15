@@ -1,9 +1,14 @@
 from __future__ import annotations
+
+import csv
+import json
+import logging
+import os
+import shutil
 from pathlib import Path
-from typing import Dict, List, Tuple
-import csv, json, shutil, os, logging
-from .utils import render_template, clean_component
+
 from .db import query_tracks, update_fields
+from .utils import clean_component, render_template
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +26,7 @@ def simulate(
 ):
     dest = dest.expanduser().resolve()
     rows = query_tracks(con, where, params)
-    plan: List[Tuple[str, str]] = []
+    plan: list[tuple[str, str]] = []
     for r in rows:
         if require_cover and not r["cover_art_url"]:
             continue
@@ -53,11 +58,11 @@ def simulate(
     return plan
 
 
-def export_csv(plan: List[Tuple[str,str]], out_csv: Path):
+def export_csv(plan: list[tuple[str, str]], out_csv: Path):
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["source","target"])
+        w.writerow(["source", "target"])
         w.writerows(plan)
     return out_csv
 
@@ -71,7 +76,7 @@ def _unique_path(p: Path) -> Path:
     return p
 
 
-def apply_plan(plan: List[Tuple[str,str]], mode: str, undo_log: Path, con=None):
+def apply_plan(plan: list[tuple[str, str]], mode: str, undo_log: Path, con=None):
     ops_done = []
     for src, dst in plan:
         src_p = Path(src)
@@ -80,12 +85,12 @@ def apply_plan(plan: List[Tuple[str,str]], mode: str, undo_log: Path, con=None):
         try:
             if mode == "move":
                 shutil.move(str(src_p), str(dst_p))
-                ops_done.append({"op":"move","src":str(src_p),"dst":str(dst_p)})
+                ops_done.append({"op": "move", "src": str(src_p), "dst": str(dst_p)})
                 if con:
                     update_fields(con, str(src_p), {"path": str(dst_p)})
             elif mode == "copy":
                 shutil.copy2(str(src_p), str(dst_p))
-                ops_done.append({"op":"copy","src":str(src_p),"dst":str(dst_p)})
+                ops_done.append({"op": "copy", "src": str(src_p), "dst": str(dst_p)})
             elif mode == "link":
                 try:
                     os.link(str(src_p), str(dst_p))
@@ -95,7 +100,7 @@ def apply_plan(plan: List[Tuple[str,str]], mode: str, undo_log: Path, con=None):
                     except OSError as e:
                         logger.error("link failed for %s: %s", src_p, e)
                         continue
-                ops_done.append({"op":"link","src":str(src_p),"dst":str(dst_p)})
+                ops_done.append({"op": "link", "src": str(src_p), "dst": str(dst_p)})
             else:
                 raise ValueError("mode inválido")
         except Exception as e:

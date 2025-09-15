@@ -1,8 +1,11 @@
 from __future__ import annotations
-from pathlib import Path
-from mutagen import File as MutagenFile
+
 import logging
-from .db import upsert_track
+from pathlib import Path
+
+from mutagen import File as MutagenFile
+
+from .db import get_by_path, update_fields, upsert_track
 from .utils import is_audio
 
 logger = logging.getLogger(__name__)
@@ -26,12 +29,19 @@ def scan_path(con, root: Path):
             continue
         try:
             stat = p.stat()
-            info = {
-                "path": str(p),
-                "mtime": stat.st_mtime,
-                "file_size": stat.st_size,
-                "missing": 0
-            }
+            existing = get_by_path(con, str(p))
+            if (
+                existing
+                and existing["mtime"] == stat.st_mtime
+                and existing["file_size"] == stat.st_size
+            ):
+                updates = {}
+                if existing["missing"]:
+                    updates["missing"] = 0
+                if updates:
+                    update_fields(con, str(p), updates)
+                continue
+            info = {"path": str(p), "mtime": stat.st_mtime, "file_size": stat.st_size, "missing": 0}
             audio = MutagenFile(str(p))
             if audio:
                 tags = getattr(audio, "tags", None)
@@ -41,7 +51,8 @@ def scan_path(con, root: Path):
                     info["album"] = _first(tags, TAG_KEY_ALIASES["album"])
                     info["genre"] = _first(tags, TAG_KEY_ALIASES["genre"])
                     info["year"] = _int_or_none(
-                        _first(tags, TAG_KEY_ALIASES["date"]) or _first(tags, TAG_KEY_ALIASES["year"])
+                        _first(tags, TAG_KEY_ALIASES["date"])
+                        or _first(tags, TAG_KEY_ALIASES["year"])
                     )
                     info["track_no"] = _int_or_none(_first(tags, TAG_KEY_ALIASES["tracknumber"]))
                 info["format"] = p.suffix.lower().lstrip(".")
@@ -119,6 +130,6 @@ def _coerce_first(value):
 
 def _int_or_none(s):
     try:
-        return int(str(s).split('/')[0][:4])
+        return int(str(s).split("/")[0][:4])
     except Exception:
         return None

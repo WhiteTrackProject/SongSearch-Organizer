@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import socket
+from collections.abc import Iterable
 from hashlib import sha1
 from pathlib import Path
-from typing import Iterable, Optional
 from urllib import request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -62,7 +62,7 @@ def _normalise_candidate(
     return candidate
 
 
-def _local_path_from_url(url: str, track_path: Path) -> Optional[Path]:
+def _local_path_from_url(url: str, track_path: Path) -> Path | None:
     """Try to interpret *url* as a local file path."""
 
     parsed = urlparse(url)
@@ -81,17 +81,13 @@ def _local_path_from_url(url: str, track_path: Path) -> Optional[Path]:
         return None
 
     if _looks_like_windows_drive(url):
-        candidate = _normalise_candidate(
-            track_path, Path(url), treat_as_absolute=True
-        )
+        candidate = _normalise_candidate(track_path, Path(url), treat_as_absolute=True)
         if candidate.exists():
             return candidate
         return None
 
     if url.startswith("\\"):
-        candidate = _normalise_candidate(
-            track_path, Path(url), treat_as_absolute=True
-        )
+        candidate = _normalise_candidate(track_path, Path(url), treat_as_absolute=True)
         if candidate.exists():
             return candidate
         return None
@@ -200,16 +196,12 @@ def _download(url: str, destination: Path) -> bool:
     except URLError as exc:
         reason = getattr(exc, "reason", exc)
         if _is_timeout_error(reason):
-            logger.warning(
-                "Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, reason
-            )
+            logger.warning("Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, reason)
         else:
             logger.warning("Failed to download %s: %s", url, exc)
         _cleanup_partial(destination)
     except TimeoutError as exc:
-        logger.warning(
-            "Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, exc
-        )
+        logger.warning("Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, exc)
         _cleanup_partial(destination)
     except Exception as exc:  # pragma: no cover - unexpected errors
         logger.error("Unexpected error downloading %s: %s", url, exc)
@@ -217,9 +209,7 @@ def _download(url: str, destination: Path) -> bool:
     return False
 
 
-def ensure_cover_for_path(
-    data_dir: Path, track_path: Path, cover_url: Optional[str]
-) -> Optional[Path]:
+def ensure_cover_for_path(data_dir: Path, track_path: Path, cover_url: str | None) -> Path | None:
     """Ensure a local cover image exists for *track_path*.
 
     Parameters
@@ -254,9 +244,11 @@ def ensure_cover_for_path(
     parsed = urlparse(url)
     scheme = parsed.scheme.lower()
 
-    is_remote = scheme in {"http", "https"} or (
-        parsed.netloc and scheme not in {"", "file"}
-    ) or (not scheme and parsed.netloc)
+    is_remote = (
+        scheme in {"http", "https"}
+        or (parsed.netloc and scheme not in {"", "file"})
+        or (not scheme and parsed.netloc)
+    )
 
     if is_remote:
         cache_dir = data_dir / "covers"
@@ -296,7 +288,7 @@ def ensure_cover_for_path(
     return _find_local_cover(track_path)
 
 
-def _find_local_cover(track_path: Path) -> Optional[Path]:
+def _find_local_cover(track_path: Path) -> Path | None:
     candidates = []
     stem = track_path.stem
     parent = track_path.parent
