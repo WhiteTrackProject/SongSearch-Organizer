@@ -13,6 +13,7 @@ from .. import __version__
 from ..core.db import connect, get_by_path, init_db, query_tracks
 from ..core.scanner import scan_path
 from ..core.cover_art import ensure_cover_for_path
+from ..core.spectrum import open_external
 import logging
 
 logger = logging.getLogger(__name__)
