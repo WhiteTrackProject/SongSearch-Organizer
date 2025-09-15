@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
+import time
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem,
     QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar, QMessageBox
@@ -82,6 +84,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def refresh(self):
+        t0 = time.perf_counter()
         text = self.search.text().strip()
         if text:
             where = "(title LIKE ? OR artist LIKE ? OR album LIKE ? OR genre LIKE ? OR path LIKE ?)"
@@ -103,6 +106,10 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(sort_enabled)
         if sort_enabled and sort_section >= 0:
             self.table.sortItems(sort_section, sort_order)
+        elapsed = time.perf_counter() - t0
+        self.statusBar().showMessage(
+            f"{len(rows)} resultados en {elapsed:.3f} s"
+        )
 
     def _set_row_from_data(self, row_idx: int, row_data) -> None:
         if isinstance(row_data, dict):
