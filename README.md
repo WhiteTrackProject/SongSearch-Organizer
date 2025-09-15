@@ -19,6 +19,20 @@ Escanea carpetas, completa metadatos con **MusicBrainz/AcoustID**, detecta dupli
 
 ---
 
+## UI – novedades
+
+* Búsqueda y navegación
+  - Filtro incremental sobre título, artista, álbum, género y ruta con ordenación por columnas.
+  - Tabla principal limitada a 5000 filas visibles para mantener la respuesta inmediata.
+* Carátulas integradas
+  - Iconos de 64 px generados desde la caché local (`~/.songsearch`) con recuperación automática de portadas.
+  - Tooltips HTML con previsualización ampliada a 256 px al pasar el ratón sobre el título.
+* Flujo de escaneo y progreso
+  - Botón «Escanear carpeta…» que abre el selector de directorios y lanza el proceso en un hilo dedicado.
+  - Barra de progreso inferior que se activa durante el escaneo para indicar el estado de la tarea.
+
+---
+
 ## 🧱 Stack
 
 - **Python 3.13.7**
