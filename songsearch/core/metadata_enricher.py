@@ -8,7 +8,7 @@ import acoustid
 import musicbrainzngs
 from mutagen import File as MutagenFile
 
-from .db import upsert_track, update_fields
+from .db import update_fields
 
 logger = logging.getLogger(__name__)
 
