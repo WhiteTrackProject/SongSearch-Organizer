@@ -27,9 +27,13 @@ Escanea carpetas, completa metadatos con **MusicBrainz/AcoustID**, detecta dupli
 * Carátulas integradas
   - Iconos de 64 px generados desde la caché local (`~/.songsearch`) con recuperación automática de portadas.
   - Tooltips HTML con previsualización ampliada a 256 px al pasar el ratón sobre el título.
+* Menú contextual
+  - Clic derecho en la tabla para acciones rápidas: **Abrir**, **Mostrar en carpeta**, **Espectrograma**, **Enriquecer**, **Obtener carátula**.
 * Flujo de escaneo y progreso
   - Botón «Escanear carpeta…» que abre el selector de directorios y lanza el proceso en un hilo dedicado.
   - Barra de progreso inferior que se activa durante el escaneo para indicar el estado de la tarea.
+* Barra de estado
+  - Indicadores en tiempo real del número de resultados visibles y la duración de la consulta/escaneo.
 
 ---
 
