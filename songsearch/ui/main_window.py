@@ -1,18 +1,26 @@
 from __future__ import annotations
+
+from typing import Iterable, Optional
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem,
     QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from pathlib import Path
 from ..core.db import connect, init_db, query_tracks
 from ..core.scanner import scan_path
+from ..core.cover_art import ensure_cover_for_path
 import logging
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path.home() / ".songsearch"
 DB_PATH = init_db(DATA_DIR)
+
+ICON_SIZE = 64
+TOOLTIP_PREVIEW_SIZE = 256
 
 
 class ScanThread(QThread):
@@ -36,6 +44,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SongSearch Organizer (v0.1)")
         self.resize(1100, 700)
         self.con = connect(DB_PATH)
+        self._visible_paths: set[str] = set()
 
         self.search = QLineEdit(self)
         self.search.setPlaceholderText("Buscar (título, artista, álbum, género, ruta)…")
@@ -57,6 +66,8 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(self.table.SelectRows)
         self.table.setEditTriggers(self.table.NoEditTriggers)
+        self.table.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        self.table.verticalHeader().setDefaultSectionSize(ICON_SIZE + 12)
 
         root = QWidget(self)
         lay = QVBoxLayout(root)
@@ -75,16 +86,114 @@ class MainWindow(QMainWindow):
         else:
             where, params = "", tuple()
         rows = query_tracks(self.con, where, params)
+        header = self.table.horizontalHeader()
+        sort_section = header.sortIndicatorSection()
+        sort_order = header.sortIndicatorOrder()
+        sort_enabled = self.table.isSortingEnabled()
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
+        self._visible_paths.clear()
         for r in rows[:5000]:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            self.table.setItem(row, 0, QTableWidgetItem(r["title"] or ""))
-            self.table.setItem(row, 1, QTableWidgetItem(r["artist"] or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(r["album"] or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(r["genre"] or ""))
-            self.table.setItem(row, 4, QTableWidgetItem(str(r["year"] or "")))
-            self.table.setItem(row, 5, QTableWidgetItem(r["path"]))
+            row_idx = self.table.rowCount()
+            self.table.insertRow(row_idx)
+            self._set_row_from_data(row_idx, r)
+        self.table.setSortingEnabled(sort_enabled)
+        if sort_enabled and sort_section >= 0:
+            self.table.sortItems(sort_section, sort_order)
+
+    def _set_row_from_data(self, row_idx: int, row_data) -> None:
+        icon, tooltip = self._cover_icon_and_tooltip(row_data)
+        columns = [
+            ("title", 0),
+            ("artist", 1),
+            ("album", 2),
+            ("genre", 3),
+            ("year", 4),
+            ("path", 5),
+        ]
+        for key, column in columns:
+            value = row_data[key]
+            text = "" if value is None else str(value)
+            item = self.table.item(row_idx, column)
+            if item is None:
+                item = QTableWidgetItem(text)
+                self.table.setItem(row_idx, column, item)
+            else:
+                item.setText(text)
+            if column == 0:
+                item.setData(Qt.UserRole, row_data["path"])
+                item.setIcon(icon if icon is not None else QIcon())
+            item.setToolTip(tooltip or "")
+        self._visible_paths.add(row_data["path"])
+
+    def _cover_icon_and_tooltip(self, row_data) -> tuple[Optional[QIcon], Optional[str]]:
+        if isinstance(row_data, dict):
+            data_map = row_data
+        else:
+            data_map = dict(row_data)
+        track_path = data_map.get("path")
+        if not track_path:
+            return None, None
+        cover_url = data_map.get("cover_art_url")
+        try:
+            cover_path = ensure_cover_for_path(DATA_DIR, Path(track_path), cover_url)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Cannot resolve cover for %s: %s", track_path, exc)
+            return None, None
+        if not cover_path:
+            return None, None
+        pixmap = QPixmap(str(cover_path))
+        if pixmap.isNull():
+            logger.debug("Pixmap is null for cover %s", cover_path)
+            return None, None
+        icon_pixmap = pixmap.scaled(ICON_SIZE, ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        icon = QIcon(icon_pixmap)
+        try:
+            resolved = cover_path.resolve()
+        except Exception:  # pragma: no cover - fallback for exotic paths
+            resolved = cover_path
+            try:
+                resolved = cover_path.absolute()
+            except Exception:
+                pass
+        try:
+            uri = resolved.as_uri()
+        except Exception:  # pragma: no cover - final fallback
+            uri = f"file://{resolved.as_posix()}"
+        tooltip = f'<div style="margin:4px"><img src="{uri}" width="{TOOLTIP_PREVIEW_SIZE}" /></div>'
+        return icon, tooltip
+
+    def _find_row_index_by_path(self, path: str) -> Optional[int]:
+        if not path:
+            return None
+        for idx in range(self.table.rowCount()):
+            item = self.table.item(idx, 5)
+            if item and item.text() == path:
+                return idx
+        return None
+
+    def refresh_cover_for_path(self, path: str):
+        if not path:
+            return
+        if self._visible_paths and path not in self._visible_paths:
+            return
+        row_idx = self._find_row_index_by_path(path)
+        if row_idx is None:
+            return
+        row_data = self.con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()
+        if not row_data:
+            return
+        self._set_row_from_data(row_idx, row_data)
+        if self.table.isSortingEnabled():
+            header = self.table.horizontalHeader()
+            section = header.sortIndicatorSection()
+            order = header.sortIndicatorOrder()
+            if section >= 0:
+                self.table.sortItems(section, order)
+
+    def refresh_covers_for_paths(self, paths: Iterable[str]):
+        for path in paths:
+            self.refresh_cover_for_path(path)
 
     def scan_dialog(self):
         d = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de música")
