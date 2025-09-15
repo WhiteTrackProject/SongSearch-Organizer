@@ -1,5 +1,3 @@
-# SongSearch-Organizer
-
 # SongSearch Organizer (v0.1)
 
 **Organiza tu biblioteca musical** de forma **rápida, segura y reversible**.  
