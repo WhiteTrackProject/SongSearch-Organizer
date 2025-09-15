@@ -6,12 +6,100 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Iterable, Optional
 from urllib import request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-_KNOWN_EXTENSIONS: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff")
+_KNOWN_EXTENSIONS: tuple[str, ...] = (
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tiff",
+)
+
+
+def _looks_like_windows_drive(value: str) -> bool:
+    if len(value) < 2:
+        return False
+    prefix, remainder = value[0], value[1]
+    if not prefix.isalpha():
+        return False
+    return remainder == ":"
+
+
+def _normalise_candidate(
+    track_path: Path, candidate: Path, *, treat_as_absolute: bool = False
+) -> Path:
+    """Return an absolute path for *candidate* relative to *track_path*.
+
+    ``Path.resolve`` is used in non-strict mode to avoid raising when the
+    destination does not exist yet. Any errors are ignored to favour returning
+    a sensible best-effort value.
+    """
+
+    try:
+        candidate = candidate.expanduser()
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    if not treat_as_absolute and not candidate.is_absolute():
+        candidate = track_path.parent / candidate
+
+    try:
+        candidate = candidate.resolve(strict=False)
+    except Exception:  # pragma: no cover - best effort
+        try:
+            candidate = candidate.absolute()
+        except Exception:  # pragma: no cover - nothing else we can do
+            pass
+
+    return candidate
+
+
+def _local_path_from_url(url: str, track_path: Path) -> Optional[Path]:
+    """Try to interpret *url* as a local file path."""
+
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
+
+    if scheme == "file":
+        raw_path = request.url2pathname(parsed.path or "")
+        if parsed.netloc and parsed.netloc not in ("", "localhost"):
+            raw_path = f"//{parsed.netloc}{raw_path}"
+        treat_as_absolute = _looks_like_windows_drive(raw_path) or raw_path.startswith("\\")
+        candidate = _normalise_candidate(
+            track_path, Path(raw_path), treat_as_absolute=treat_as_absolute
+        )
+        if candidate.exists():
+            return candidate
+        return None
+
+    if _looks_like_windows_drive(url):
+        candidate = _normalise_candidate(
+            track_path, Path(url), treat_as_absolute=True
+        )
+        if candidate.exists():
+            return candidate
+        return None
+
+    if url.startswith("\\"):
+        candidate = _normalise_candidate(
+            track_path, Path(url), treat_as_absolute=True
+        )
+        if candidate.exists():
+            return candidate
+        return None
+
+    if not scheme and not parsed.netloc:
+        candidate = _normalise_candidate(track_path, Path(url))
+        if candidate.exists():
+            return candidate
+
+    return None
 
 
 def _existing_hashed_files(base: Path) -> Iterable[Path]:
@@ -67,7 +155,9 @@ def _download(url: str, destination: Path) -> bool:
     return False
 
 
-def ensure_cover_for_path(data_dir: Path, track_path: Path, cover_url: Optional[str]) -> Optional[Path]:
+def ensure_cover_for_path(
+    data_dir: Path, track_path: Path, cover_url: Optional[str]
+) -> Optional[Path]:
     """Ensure a local cover image exists for *track_path*.
 
     Parameters
@@ -86,6 +176,8 @@ def ensure_cover_for_path(data_dir: Path, track_path: Path, cover_url: Optional[
     """
 
     track_path = Path(track_path)
+    data_dir = Path(data_dir)
+
     if not cover_url:
         return _find_local_cover(track_path)
 
@@ -93,21 +185,18 @@ def ensure_cover_for_path(data_dir: Path, track_path: Path, cover_url: Optional[
     if not url:
         return _find_local_cover(track_path)
 
+    local_candidate = _local_path_from_url(url, track_path)
+    if local_candidate:
+        return local_candidate
+
     parsed = urlparse(url)
     scheme = parsed.scheme.lower()
 
-    if scheme == "file" or (scheme == "" and not parsed.netloc):
-        # Treat as local path. Relative paths are resolved from the track directory.
-        raw_path = parsed.path if scheme == "file" else url
-        local_path = Path(raw_path)
-        if not local_path.is_absolute():
-            local_path = (track_path.parent / local_path).resolve()
-        if local_path.exists():
-            return local_path
-        logger.debug("Local cover path not found: %s", local_path)
-        return _find_local_cover(track_path)
+    is_remote = scheme in {"http", "https"} or (
+        parsed.netloc and scheme not in {"", "file"}
+    ) or (not scheme and parsed.netloc)
 
-    if scheme in ("http", "https") or parsed.netloc:
+    if is_remote:
         cache_dir = data_dir / "covers"
         cache_dir.mkdir(parents=True, exist_ok=True)
         base_name = sha1(url.encode("utf-8")).hexdigest()
