@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
         self.refresh()
         logger.info("scan completed")
 
-    def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - GUI specific
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802  # pragma: no cover - GUI specific
         thread = self._scan_thread
         if thread is not None and thread.isRunning():
             thread.requestInterruption()
