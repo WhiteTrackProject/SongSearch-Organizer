@@ -14,9 +14,9 @@ import logging
 import os
 import platform
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 __all__ = ["RekordboxAdapter", "export_playlist_to_m3u"]
 
@@ -40,7 +40,9 @@ def _candidate_paths() -> list[Path]:
     # Rekordbox 5 (classic)
     if "darwin" in system:
         paths.append(home / "Library" / "Pioneer" / "rekordbox" / "mastersqlite.db")
-        paths.append(home / "Library" / "Application Support" / "Pioneer" / "rekordbox6" / "master.db")
+        paths.append(
+            home / "Library" / "Application Support" / "Pioneer" / "rekordbox6" / "master.db"
+        )
     elif "win" in system:
         appdata = os.getenv("APPDATA")
         if appdata:
@@ -61,7 +63,10 @@ def _candidate_paths() -> list[Path]:
     return normalized
 
 
-def export_playlist_to_m3u(rows: Iterable[dict[str, Any] | sqlite3.Row], output: str | Path) -> Path:
+def export_playlist_to_m3u(
+    rows: Iterable[Mapping[str, Any] | sqlite3.Row | Iterable[tuple[Any, Any]]],
+    output: str | Path,
+) -> Path:
     """Export *rows* to the UTF-8 encoded ``output`` file as an ``.m3u8`` list."""
 
     output_path = Path(output)
@@ -71,11 +76,11 @@ def export_playlist_to_m3u(rows: Iterable[dict[str, Any] | sqlite3.Row], output:
         for row in rows:
             if isinstance(row, sqlite3.Row):
                 data = dict(row)
-            elif isinstance(row, dict):
-                data = row
+            elif isinstance(row, Mapping):
+                data = dict(row)
             else:
                 try:
-                    data = dict(row)  # type: ignore[arg-type]
+                    data = dict(cast(Iterable[tuple[Any, Any]], row))
                 except Exception:  # pragma: no cover - best effort
                     data = {}
             title = str(data.get("title") or data.get("Name") or "")
@@ -102,7 +107,7 @@ class RekordboxAdapter:
     # Detection helpers
     # ------------------------------------------------------------------
     @classmethod
-    def detect(cls) -> "RekordboxAdapter | None":
+    def detect(cls) -> RekordboxAdapter | None:
         """Return an adapter instance when a database is discovered."""
 
         for candidate in _candidate_paths():
@@ -132,9 +137,12 @@ class RekordboxAdapter:
                 try:
                     rows = con.execute(query).fetchall()
                 except sqlite3.OperationalError:
-                    rows = con.execute(
-                        "SELECT ID, Name, ParentID, Attribute FROM djmdPlaylist ORDER BY COALESCE(ParentID, ID), ID"
-                    ).fetchall()
+                    fallback_query = (
+                        "SELECT ID, Name, ParentID, Attribute "
+                        "FROM djmdPlaylist "
+                        "ORDER BY COALESCE(ParentID, ID), ID"
+                    )
+                    rows = con.execute(fallback_query).fetchall()
         except sqlite3.DatabaseError as exc:  # pragma: no cover - defensive
             logger.debug("Cannot read Rekordbox playlists: %s", exc)
             return []
@@ -173,7 +181,8 @@ class RekordboxAdapter:
                 if not self._has_table(con, "djmdPlaylistTrack"):
                     return []
                 base_query = (
-                    "SELECT pt.TrackID, s.Title, s.ArtistName, c.FilePath, c.FileName, c.OriginalFileName "
+                    "SELECT pt.TrackID, s.Title, s.ArtistName, "
+                    "c.FilePath, c.FileName, c.OriginalFileName "
                     "FROM djmdPlaylistTrack pt "
                     "JOIN djmdSong s ON s.ID = pt.TrackID "
                     "LEFT JOIN djmdContent c ON c.ID = s.ContentID "
@@ -215,17 +224,31 @@ class RekordboxAdapter:
     # ------------------------------------------------------------------
     # Mutation operations (not implemented by default)
     # ------------------------------------------------------------------
-    def create_playlist(self, name: str, parent_id: int | None = None) -> None:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def create_playlist(
+        self, name: str, parent_id: int | None = None
+    ) -> None:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
     def delete_playlist(self, playlist_id: int | str) -> None:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
-    def add_tracks_to_playlist(self, playlist_id: int | str, paths: Iterable[str]) -> int:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def add_tracks_to_playlist(
+        self, playlist_id: int | str, paths: Iterable[str]
+    ) -> int:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
-    def remove_tracks_from_playlist(self, playlist_id: int | str, paths: Iterable[str]) -> int:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def remove_tracks_from_playlist(
+        self, playlist_id: int | str, paths: Iterable[str]
+    ) -> int:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers

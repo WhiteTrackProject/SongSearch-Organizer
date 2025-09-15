@@ -15,10 +15,14 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
@@ -31,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
 from .details_panel import DetailsPanel
+from .theme import ensure_styled_background
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +62,17 @@ class TrackTableModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Qt model API
     # ------------------------------------------------------------------
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # type: ignore[override]  # noqa: N802
+    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(self._rows)
 
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # type: ignore[override]  # noqa: N802
+    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(self.COLUMNS)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # type: ignore[override]
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
         if not index.isValid():
             return None
         row = index.row()
@@ -86,7 +91,7 @@ class TrackTableModel(QAbstractTableModel):
 
     def headerData(  # noqa: N802
         self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole
-    ) -> Any:  # type: ignore[override]
+    ) -> Any:
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
@@ -95,7 +100,7 @@ class TrackTableModel(QAbstractTableModel):
             return None
         return section + 1
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:  # type: ignore[override]
+    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
         if not index.isValid():
             return Qt.ItemIsEnabled
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -170,7 +175,7 @@ class MainWindow(QMainWindow):
             db_path = init_db(self._data_dir)
             con = connect(db_path)
             logger.info("Base de datos cargada desde %s", db_path)
-        self._con = con
+        self._con: sqlite3.Connection | None = con
 
         self._model = TrackTableModel(self)
         self._details = DetailsPanel(con=self._con, data_dir=self._data_dir, parent=self)
@@ -198,18 +203,30 @@ class MainWindow(QMainWindow):
         central = QWidget(self)
         central.setObjectName("MainContainer")
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
         self._search.setClearButtonEnabled(True)
         self._search.setObjectName("SearchField")
         self._search.textChanged.connect(self._on_search_text_changed)
-        layout.addWidget(self._search)
+        self._search.returnPressed.connect(self.refresh_results)
+        search_layout.addWidget(self._search, 1)
+
+        search_hint = QLabel("↵ ejecutar", search_container)
+        search_hint.setObjectName("SearchHint")
+        search_layout.addWidget(search_hint)
+
+        header_layout.addWidget(search_container, 0, Qt.AlignVCenter)
+        layout.addWidget(header)
 
         splitter = QSplitter(Qt.Horizontal, central)
-        splitter.setHandleWidth(2)
         splitter.setChildrenCollapsible(False)
+        splitter.setOpaqueResize(False)
+
+        table_card = QFrame(splitter)
+        table_card.setObjectName("TableCard")
+        ensure_styled_background(table_card)
+        table_layout = QVBoxLayout(table_card)
+        table_layout.setContentsMargins(18, 18, 18, 18)
+        table_layout.setSpacing(0)
 
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -217,22 +234,40 @@ class MainWindow(QMainWindow):
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
-        self._table.setObjectName("TrackTable")
-        self._table.verticalHeader().setDefaultSectionSize(36)
-        self._table.horizontalHeader().setSectionsMovable(True)
-        self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self._table.horizontalHeader().setHighlightSections(False)
         self._table.verticalHeader().setVisible(False)
+        header_view = self._table.horizontalHeader()
+        header_view.setSectionsMovable(True)
+        header_view.setStretchLastSection(True)
+        header_view.setSectionResizeMode(QHeaderView.Interactive)
+        header_view.setHighlightSections(False)
+        header_view.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        table_layout.addWidget(self._table)
 
-        splitter.addWidget(self._table)
-        splitter.addWidget(self._details)
+        details_card = QFrame(splitter)
+        details_card.setObjectName("DetailsCard")
+        ensure_styled_background(details_card)
+        details_layout = QVBoxLayout(details_card)
+        details_layout.setContentsMargins(18, 18, 18, 18)
+        details_layout.setSpacing(0)
+        details_layout.addWidget(self._details)
+
+        for card in (table_card, details_card):
+            shadow = QGraphicsDropShadowEffect(card)
+            shadow.setBlurRadius(28)
+            shadow.setOffset(0, 14)
+            shadow.setColor(QColor(7, 10, 22, 150))
+            card.setGraphicsEffect(shadow)
+
+        splitter.addWidget(table_card)
+        splitter.addWidget(details_card)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, 1)
 
         self.setCentralWidget(central)
         self.setStatusBar(self._status)
+        self._status.setObjectName("MainStatusBar")
+        self._status.setSizeGripEnabled(False)
         self._status.showMessage("Listo")
 
         selection_model = self._table.selectionModel()
