@@ -71,6 +71,7 @@ default: "{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
 alternativas:
   - "{Artista}/{Año} - {Álbum}/{TrackNo - Título}.{ext}"
   - "{Año}/{Genero}/{Artista}/{Título}.{ext}"
+  - "MB/{ReleaseID}/{TrackNo - Título}.{ext}"  # mb-release
 reglas:
   limpiar_nombres: true
   quitar_parentesis_promos: true
@@ -78,6 +79,10 @@ reglas:
   usar_albumartist_si_falta_artista: true
   compilaciones_va: "{Genero}/{Año}/{Álbum}/VA - {TrackNo - Artista - Título}.{ext}"
 ```
+
+Plantilla `mb-release`: `MB/{ReleaseID}/{TrackNo - Título}.{ext}`.
+
+`{ReleaseID}` es el identificador del lanzamiento en MusicBrainz.
 
 ---
 
