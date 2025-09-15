@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from pathlib import Path
-from ..core.db import connect, init_db, query_tracks
+from ..core.db import connect, get_by_path, init_db, query_tracks
 from ..core.scanner import scan_path
 from ..core.cover_art import ensure_cover_for_path
 import logging
@@ -180,7 +180,7 @@ class MainWindow(QMainWindow):
         row_idx = self._find_row_index_by_path(path)
         if row_idx is None:
             return
-        row_data = self.con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()
+        row_data = get_by_path(self.con, path)
         if not row_data:
             return
         self._set_row_from_data(row_idx, row_data)
