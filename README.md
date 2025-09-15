@@ -119,7 +119,19 @@ python -m songsearch.cli undo
 python -m songsearch.cli spectrum --input "/ruta/tema.flac"
 ```
 
-7. **UI** (PySide6):
+7. **Carátulas (lote)**:
+
+```bash
+python -m songsearch.cli covers --limit 200 --only-missing
+```
+
+8. **Duplicados por hash parcial** (más preciso):
+
+```bash
+python -m songsearch.cli dupes --use-hash --preview
+```
+
+9. **UI** (PySide6):
 
 ```bash
 python -m songsearch.app

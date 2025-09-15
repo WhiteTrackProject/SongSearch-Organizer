@@ -12,7 +12,8 @@ from ..core.scanner import scan_path
 from ..core.organizer import simulate, export_csv, apply_plan, undo_from_log
 from ..core.spectrum import generate_spectrogram, open_external
 from ..core.metadata_enricher import enrich_db
-from ..core.duplicates import find_duplicates, resolve_move_others
+from ..core.duplicates import find_duplicates, resolve_move_others, compute_partial_hash
+from ..core.cover_art import ensure_cover_for_path
 
 app = typer.Typer(help="SongSearch Organizer CLI")
 load_dotenv()
@@ -98,22 +99,68 @@ def enrich(
 
 
 @app.command()
+def covers(
+    limit: int = typer.Option(200, "--limit", help="Máximo de pistas a intentar"),
+    only_missing: bool = typer.Option(True, "--only-missing/--all", help="Solo pistas sin cover_local_path")
+):
+    """Descarga/extrae carátulas y las cachea en ~/.songsearch/covers/."""
+    con = connect(DB_PATH)
+    if only_missing:
+        rows = con.execute("SELECT * FROM tracks WHERE missing=0 AND (cover_local_path IS NULL OR cover_local_path='') LIMIT ?", (limit,)).fetchall()
+    else:
+        rows = con.execute("SELECT * FROM tracks WHERE missing=0 LIMIT ?", (limit,)).fetchall()
+    ok = 0
+    for r in rows:
+        p = Path(r["path"])
+        if not p.exists():
+            continue
+        out = ensure_cover_for_path(con, p)
+        if out:
+            ok += 1
+            print("[green]OK[/green]", p.name, "→", out.name)
+    print(f"[cyan]{ok}[/cyan] carátulas cacheadas.")
+
+
+@app.command()
 def dupes(
     move_to: str = typer.Option("", "--move-to", help="Si se indica, mueve duplicados (excepto el mejor) a esta carpeta"),
-    preview: bool = typer.Option(True, "--preview/--no-preview", help="Mostrar grupos por pantalla")
+    preview: bool = typer.Option(True, "--preview/--no-preview", help="Mostrar grupos por pantalla"),
+    use_hash: bool = typer.Option(False, "--use-hash", help="Usar hash parcial (más preciso)")
 ):
     con = connect(DB_PATH)
     rows = con.execute("SELECT * FROM tracks WHERE duration IS NOT NULL AND file_size IS NOT NULL AND missing=0").fetchall()
-    groups = find_duplicates(rows)
-    print(f"[cyan]{len(groups)}[/cyan] grupos de posibles duplicados.")
+
+    if use_hash:
+        missing = [r for r in rows if not r["hash_partial"]]
+        for r in missing:
+            p = Path(r["path"])
+            if not p.exists():
+                continue
+            hp = compute_partial_hash(p)
+            if hp:
+                con.execute("UPDATE tracks SET hash_partial=? WHERE path=?", (hp, str(p)))
+        con.commit()
+        rows = con.execute("SELECT * FROM tracks WHERE duration IS NOT NULL AND file_size IS NOT NULL AND missing=0").fetchall()
+
+    groups = find_duplicates(rows, use_hash=use_hash)
+    print(f"[cyan]{len(groups)}[/cyan] grupos de posibles duplicados. (use_hash={use_hash})")
     if preview:
         for i, g in enumerate(groups[:50], start=1):
             table = Table(title=f"Grupo #{i} ({len(g)} archivos)")
+            if use_hash:
+                table.add_column("hash")
+            else:
+                table.add_column("dur")
             table.add_column("bitrate")
             table.add_column("size")
             table.add_column("path", overflow="fold")
             for r in g:
-                table.add_row(str(r["bitrate"] or ""), str(r["file_size"] or ""), r["path"])
+                table.add_row(
+                    r.get("hash_partial") if use_hash else str(int(round(r.get("duration") or 0))),
+                    str(r["bitrate"] or ""),
+                    str(r["file_size"] or ""),
+                    r["path"]
+                )
             print(table)
         if len(groups) > 50:
             print("[dim]Mostrando solo los 50 primeros grupos…[/dim]")

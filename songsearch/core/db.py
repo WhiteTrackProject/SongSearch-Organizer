@@ -1,7 +1,7 @@
 from __future__ import annotations
 import sqlite3
 from pathlib import Path
-from typing import Iterable, Dict, Any, Tuple
+from typing import Iterable, Dict, Any, Tuple, Optional
 
 DB_FILENAME = "songsearch.db"
 
@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS tracks (
     mb_release_id TEXT,
     mb_release_group_id TEXT,
     mb_confidence REAL,
-    cover_art_url TEXT
+    cover_art_url TEXT,
+    -- Nuevas columnas para carátulas cacheadas y hash parcial
+    hash_partial TEXT,
+    cover_local_path TEXT,
+    cover_fetched INTEGER DEFAULT 0
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
@@ -56,6 +60,9 @@ MIGRATION_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("mb_release_group_id", "TEXT"),
     ("mb_confidence", "REAL"),
     ("cover_art_url", "TEXT"),
+    ("hash_partial", "TEXT"),
+    ("cover_local_path", "TEXT"),
+    ("cover_fetched", "INTEGER"),
 )
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -92,7 +99,8 @@ def upsert_track(con: sqlite3.Connection, data: Dict[str, Any]) -> int:
         "path","title","artist","album","album_artist","year","genre",
         "track_no","disc_no","duration","bitrate","samplerate","channels","format",
         "mtime","file_size","missing","fp_status","acoustid_id","mb_recording_id",
-        "mb_release_id","mb_release_group_id","mb_confidence","cover_art_url"
+        "mb_release_id","mb_release_group_id","mb_confidence","cover_art_url",
+        "hash_partial","cover_local_path","cover_fetched"
     ) if k in cols and k in data]
     placeholders = ",".join("?" for _ in fields)
     values = [data.get(k) for k in fields]
@@ -132,3 +140,6 @@ def query_tracks(con: sqlite3.Connection, where: str = "", params: Iterable[Any]
         sql += " WHERE " + where
     sql += " ORDER BY artist, album, title"
     return con.execute(sql, tuple(params)).fetchall()
+
+def get_by_path(con: sqlite3.Connection, path: str) -> Optional[sqlite3.Row]:
+    return con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()

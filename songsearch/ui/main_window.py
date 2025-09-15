@@ -4,9 +4,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar
 )
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QPixmap, QIcon
 from pathlib import Path
 from ..core.db import connect, init_db, query_tracks
 from ..core.scanner import scan_path
+from ..core.cover_art import ensure_cover_for_path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,9 @@ class MainWindow(QMainWindow):
         self.btn_scan = QPushButton("Escanear carpeta…")
         self.btn_scan.clicked.connect(self.scan_dialog)
 
+        self.btn_covers = QPushButton("Carátulas (lote)")
+        self.btn_covers.clicked.connect(self.fetch_covers_for_visible)
+
         self.progress = QProgressBar()
         self.progress.setVisible(False)
 
@@ -51,9 +56,10 @@ class MainWindow(QMainWindow):
         top.addWidget(QLabel("Filtro:"))
         top.addWidget(self.search, 1)
         top.addWidget(self.btn_scan)
+        top.addWidget(self.btn_covers)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Título","Artista","Álbum","Género","Año","Ruta"])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["Cover","Título","Artista","Álbum","Género","Año","Ruta"])
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(self.table.SelectRows)
         self.table.setEditTriggers(self.table.NoEditTriggers)
@@ -79,12 +85,17 @@ class MainWindow(QMainWindow):
         for r in rows[:5000]:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            self.table.setItem(row, 0, QTableWidgetItem(r["title"] or ""))
-            self.table.setItem(row, 1, QTableWidgetItem(r["artist"] or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(r["album"] or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(r["genre"] or ""))
-            self.table.setItem(row, 4, QTableWidgetItem(str(r["year"] or "")))
-            self.table.setItem(row, 5, QTableWidgetItem(r["path"]))
+            cover_item = QTableWidgetItem("")
+            icon = self._cover_icon_for_row(r)
+            if icon:
+                cover_item.setIcon(icon)
+            self.table.setItem(row, 0, cover_item)
+            self.table.setItem(row, 1, QTableWidgetItem(r["title"] or ""))
+            self.table.setItem(row, 2, QTableWidgetItem(r["artist"] or ""))
+            self.table.setItem(row, 3, QTableWidgetItem(r["album"] or ""))
+            self.table.setItem(row, 4, QTableWidgetItem(r["genre"] or ""))
+            self.table.setItem(row, 5, QTableWidgetItem(str(r["year"] or "")))
+            self.table.setItem(row, 6, QTableWidgetItem(r["path"]))
 
     def scan_dialog(self):
         d = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de música")
@@ -99,3 +110,32 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(False)
         self.refresh()
         logger.info("scan completed")
+
+    def _cover_icon_for_row(self, r):
+        p = r.get("cover_local_path")
+        if not p:
+            return None
+        pm = QPixmap(p)
+        if pm.isNull():
+            return None
+        pm2 = pm.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        return QIcon(pm2)
+
+    def fetch_covers_for_visible(self):
+        rows = min(self.table.rowCount(), 200)
+        if rows == 0:
+            return
+        self.progress.setVisible(True)
+        self.progress.setRange(0,0)
+        ok = 0
+        for i in range(rows):
+            path = self.table.item(i, 6).text()
+            out = ensure_cover_for_path(self.con, Path(path))
+            if out:
+                ok += 1
+                r = {"cover_local_path": str(out)}
+                icon = self._cover_icon_for_row(r)
+                if icon:
+                    self.table.item(i, 0).setIcon(icon)
+        self.progress.setVisible(False)
+        logger.info("covers cached for %d/%d items", ok, rows)
