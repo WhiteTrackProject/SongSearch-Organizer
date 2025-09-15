@@ -40,7 +40,9 @@ def _candidate_paths() -> list[Path]:
     # Rekordbox 5 (classic)
     if "darwin" in system:
         paths.append(home / "Library" / "Pioneer" / "rekordbox" / "mastersqlite.db")
-        paths.append(home / "Library" / "Application Support" / "Pioneer" / "rekordbox6" / "master.db")
+        paths.append(
+            home / "Library" / "Application Support" / "Pioneer" / "rekordbox6" / "master.db"
+        )
     elif "win" in system:
         appdata = os.getenv("APPDATA")
         if appdata:
@@ -61,7 +63,9 @@ def _candidate_paths() -> list[Path]:
     return normalized
 
 
-def export_playlist_to_m3u(rows: Iterable[dict[str, Any] | sqlite3.Row], output: str | Path) -> Path:
+def export_playlist_to_m3u(
+    rows: Iterable[dict[str, Any] | sqlite3.Row], output: str | Path
+) -> Path:
     """Export *rows* to the UTF-8 encoded ``output`` file as an ``.m3u8`` list."""
 
     output_path = Path(output)
@@ -215,17 +219,31 @@ class RekordboxAdapter:
     # ------------------------------------------------------------------
     # Mutation operations (not implemented by default)
     # ------------------------------------------------------------------
-    def create_playlist(self, name: str, parent_id: int | None = None) -> None:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def create_playlist(
+        self, name: str, parent_id: int | None = None
+    ) -> None:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
     def delete_playlist(self, playlist_id: int | str) -> None:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
-    def add_tracks_to_playlist(self, playlist_id: int | str, paths: Iterable[str]) -> int:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def add_tracks_to_playlist(
+        self, playlist_id: int | str, paths: Iterable[str]
+    ) -> int:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
-    def remove_tracks_from_playlist(self, playlist_id: int | str, paths: Iterable[str]) -> int:  # pragma: no cover - optional
-        raise RuntimeError("La escritura de playlists de Rekordbox no está habilitada en esta build.")
+    def remove_tracks_from_playlist(
+        self, playlist_id: int | str, paths: Iterable[str]
+    ) -> int:  # pragma: no cover - optional
+        raise RuntimeError(
+            "La escritura de playlists de Rekordbox no está habilitada en esta build."
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
