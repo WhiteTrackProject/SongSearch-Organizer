@@ -83,9 +83,12 @@ SPEK_APP_PATH=
 ```yaml
 default: "{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
 alternativas:
-  - "{Artista}/{Año} - {Álbum}/{TrackNo - Título}.{ext}"
-  - "{Año}/{Genero}/{Artista}/{Título}.{ext}"
-  - "MB/{ReleaseID}/{TrackNo - Título}.{ext}"  # mb-release
+  - name: "artista-año-album"
+    pattern: "{Artista}/{Año} - {Álbum}/{TrackNo - Título}.{ext}"
+  - name: "año-genero-artista"
+    pattern: "{Año}/{Genero}/{Artista}/{Título}.{ext}"
+  - name: "mb-release"
+    pattern: "MB/{ReleaseID}/{TrackNo - Título}.{ext}"
 reglas:
   limpiar_nombres: true
   quitar_parentesis_promos: true
@@ -94,9 +97,16 @@ reglas:
   compilaciones_va: "{Genero}/{Año}/{Álbum}/VA - {TrackNo - Artista - Título}.{ext}"
 ```
 
-Plantilla `mb-release`: `MB/{ReleaseID}/{TrackNo - Título}.{ext}`.
+**Plantillas incluidas:**
 
-`{ReleaseID}` es el identificador del lanzamiento en MusicBrainz.
+- `default`: estructura clásica `Género/Año/Artista/Álbum`.
+- `artista-año-album`: agrupa por artista con subcarpetas por año y álbum.
+- `año-genero-artista`: ordena por año → género → artista → título.
+- `mb-release`: usa el identificador de lanzamiento de MusicBrainz para crear rutas `MB/{ReleaseID}/{TrackNo - Título}.{ext}`.
+
+**Variables especiales:**
+
+- `{ReleaseID}`: identificador (UUID) del lanzamiento en MusicBrainz, disponible tras enriquecer metadatos.
 
 ---
 
