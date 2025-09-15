@@ -4,6 +4,8 @@ alternativas:
     pattern: "{Artista}/{Año} - {Álbum}/{TrackNo - Título}.{ext}"
   - name: "año-genero-artista"
     pattern: "{Año}/{Genero}/{Artista}/{Título}.{ext}"
+  - name: "mb-release"
+    pattern: "MB/{ReleaseID}/{TrackNo - Título}.{ext}"
 reglas:
   limpiar_nombres: true
   quitar_parentesis_promos: true
