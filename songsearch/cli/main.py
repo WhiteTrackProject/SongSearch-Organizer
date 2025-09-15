@@ -2,8 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import typer
-from rich import print
 from rich.table import Table
+from rich.logging import RichHandler
 from dotenv import load_dotenv
 import logging
 
@@ -16,7 +16,8 @@ from ..core.duplicates import find_duplicates, resolve_move_others
 
 app = typer.Typer(help="SongSearch Organizer CLI")
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[RichHandler()])
+logger = logging.getLogger(__name__)
 
 DEFAULT_DATA_DIR = Path.home() / ".songsearch"
 UNDO_LOG = DEFAULT_DATA_DIR / "logs" / "last_ops.json"
@@ -28,7 +29,7 @@ DB_PATH = init_db(DEFAULT_DATA_DIR)
 def scan(path: str = typer.Option(..., "--path", help="Carpeta a escanear")):
     con = connect(DB_PATH)
     scan_path(con, Path(path))
-    print("[green]Escaneo completado[/green] → DB:", DB_PATH)
+    logger.info("Escaneo completado → DB: %s", DB_PATH)
 
 
 @app.command()
@@ -41,16 +42,16 @@ def organize(
     tpl = _load_template(template)
     con = connect(DB_PATH)
     plan = simulate(con, Path(dest), tpl)
-    print(f"[cyan]{len(plan)}[/cyan] elementos en el plan ({mode}).")
+    logger.info("%d elementos en el plan (%s).", len(plan), mode)
     if mode == "simulate":
         _print_plan(plan)
         if export:
             csv_path = DEFAULT_DATA_DIR / "logs" / "plan.csv"
             export_csv(plan, csv_path)
-            print("CSV:", csv_path)
+            logger.info("CSV: %s", csv_path)
     else:
         undo_log = apply_plan(plan, mode, UNDO_LOG, con=con)
-        print("[green]Aplicado[/green]. Undo log:", undo_log)
+        logger.info("Aplicado. Undo log: %s", undo_log)
 
 
 @app.command()
@@ -67,10 +68,10 @@ def spectrum(
     if open_external_app:
         app_path = os.getenv("SPEK_APP_PATH") or None
         open_external(p, app_path)
-        print("[green]Abierto externamente[/green]")
+        logger.info("Abierto externamente")
     else:
         out = generate_spectrogram(p, SPECTRO_DIR)
-        print("Espectrograma:", out)
+        logger.info("Espectrograma: %s", out)
 
 
 @app.command()
@@ -82,7 +83,7 @@ def enrich(
     con = connect(DB_PATH)
     rows = enrich_db(con, limit=limit, min_confidence=min_confidence, write_tags=write_tags)
     if not rows:
-        print("[yellow]Sin cambios o sin coincidencias por encima del umbral.[/yellow]")
+        logger.warning("Sin cambios o sin coincidencias por encima del umbral.")
         return
     table = Table(title=f"Enriquecidos ({len(rows)})")
     table.add_column("Path", overflow="fold")
@@ -94,7 +95,7 @@ def enrich(
     for r in rows:
         table.add_row(r["path"], str(r.get("title") or ""), str(r.get("artist") or ""),
                       str(r.get("album") or ""), str(r.get("year") or ""), f"{r.get('mb_confidence', 0):.2f}")
-    print(table)
+    logger.info(table)
 
 
 @app.command()
@@ -105,7 +106,7 @@ def dupes(
     con = connect(DB_PATH)
     rows = con.execute("SELECT * FROM tracks WHERE duration IS NOT NULL AND file_size IS NOT NULL AND missing=0").fetchall()
     groups = find_duplicates(rows)
-    print(f"[cyan]{len(groups)}[/cyan] grupos de posibles duplicados.")
+    logger.info("%d grupos de posibles duplicados.", len(groups))
     if preview:
         for i, g in enumerate(groups[:50], start=1):
             table = Table(title=f"Grupo #{i} ({len(g)} archivos)")
@@ -114,16 +115,16 @@ def dupes(
             table.add_column("path", overflow="fold")
             for r in g:
                 table.add_row(str(r["bitrate"] or ""), str(r["file_size"] or ""), r["path"])
-            print(table)
+            logger.info(table)
         if len(groups) > 50:
-            print("[dim]Mostrando solo los 50 primeros grupos…[/dim]")
+            logger.info("Mostrando solo los 50 primeros grupos…")
     if move_to:
         dest = Path(move_to).expanduser()
         total = 0
         for g in groups:
             applied = resolve_move_others(con, g, dest)
             total += len(applied)
-        print(f"[green]Movidos {total} duplicados a[/green] {dest}")
+        logger.info("Movidos %d duplicados a %s", total, dest)
 
 
 def _load_template(name: str) -> str:
@@ -147,4 +148,4 @@ def _print_plan(plan):
     table.add_column("Target", overflow="fold")
     for s, t in plan[:200]:
         table.add_row(s, t)
-    print(table)
+    logger.info(table)
