@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import subprocess
+import sys
 import time
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -12,12 +14,16 @@ from PySide6.QtCore import (
     QItemSelection,
     QItemSelectionModel,
     QModelIndex,
+    QPoint,
     Qt,
+    QThread,
     QTimer,
+    Signal,
 )
-from PySide6.QtGui import QCloseEvent, QColor
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -25,7 +31,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QStatusBar,
     QTableView,
@@ -34,10 +42,54 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
+from ..core.scanner import scan_path
+from ..core.spectrum import open_external
 from .details_panel import DetailsPanel
 from .theme import ensure_styled_background
 
 logger = logging.getLogger(__name__)
+
+_ICON_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
+
+
+def _load_icon(name: str) -> QIcon:
+    """Return a ``QIcon`` for *name* if the asset exists."""
+
+    path = _ICON_DIR / name
+    return QIcon(str(path)) if path.exists() else QIcon()
+
+
+def _is_macos() -> bool:
+    return sys.platform == "darwin"
+
+
+def _is_windows() -> bool:
+    return sys.platform.startswith("win")
+
+
+class _ScanWorker(QThread):
+    """Background worker that scans a directory without blocking the UI."""
+
+    finished = Signal(Path)
+    failed = Signal(object)
+
+    def __init__(self, db_path: Path, target: Path, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._db_path = db_path
+        self._target = target
+
+    def run(self) -> None:  # pragma: no cover - heavy IO in background thread
+        try:
+            con = connect(self._db_path)
+            try:
+                scan_path(con, self._target)
+            finally:
+                con.close()
+        except Exception as exc:  # noqa: BLE001 - propagate to UI thread
+            logger.exception("Background scan failed: %s", exc)
+            self.failed.emit(exc)
+        else:
+            self.finished.emit(self._target)
 
 
 class TrackTableModel(QAbstractTableModel):
@@ -171,14 +223,21 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
         self._owns_connection = con is None
+        self._db_path: Path | None = None
         if con is None:
             db_path = init_db(self._data_dir)
             con = connect(db_path)
             logger.info("Base de datos cargada desde %s", db_path)
+            self._db_path = db_path
+        else:
+            self._db_path = self._resolve_db_path(con)
         self._con: sqlite3.Connection | None = con
 
         self._model = TrackTableModel(self)
         self._details = DetailsPanel(con=self._con, data_dir=self._data_dir, parent=self)
+        self._details.btn_open.clicked.connect(self._open_selected_track)
+        self._details.btn_reveal.clicked.connect(self._reveal_selected_track)
+        self._details.btn_copy_path.clicked.connect(self._copy_selected_paths)
         self._current_path: str | None = None
 
         self._search_timer = QTimer(self)
@@ -189,6 +248,11 @@ class MainWindow(QMainWindow):
         self._search = QLineEdit(self)
         self._table = QTableView(self)
         self._status = QStatusBar(self)
+
+        self._btn_scan: QPushButton | None = None
+        self._btn_enrich: QPushButton | None = None
+        self._btn_spectrum: QPushButton | None = None
+        self._scan_worker: _ScanWorker | None = None
 
         self._build_ui()
         self.refresh_results()
@@ -203,6 +267,20 @@ class MainWindow(QMainWindow):
         central = QWidget(self)
         central.setObjectName("MainContainer")
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        header = QWidget(central)
+        header.setObjectName("HeaderBar")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(24, 24, 24, 12)
+        header_layout.setSpacing(16)
+
+        search_container = QWidget(header)
+        search_container.setObjectName("SearchContainer")
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(10)
+
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
         self._search.setClearButtonEnabled(True)
         self._search.setObjectName("SearchField")
@@ -214,7 +292,29 @@ class MainWindow(QMainWindow):
         search_hint.setObjectName("SearchHint")
         search_layout.addWidget(search_hint)
 
-        header_layout.addWidget(search_container, 0, Qt.AlignVCenter)
+        header_layout.addWidget(search_container, 1, Qt.AlignVCenter)
+
+        actions_container = QWidget(header)
+        actions_container.setObjectName("HeaderActions")
+        actions_layout = QHBoxLayout(actions_container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(8)
+
+        self._btn_scan = QPushButton(_load_icon("scan.png"), "Escanear…", actions_container)
+        self._btn_scan.clicked.connect(self._open_scan_dialog)
+        actions_layout.addWidget(self._btn_scan)
+
+        self._btn_enrich = QPushButton(_load_icon("enrich.png"), "Enriquecer", actions_container)
+        self._btn_enrich.clicked.connect(self._enrich_selected)
+        self._btn_enrich.setEnabled(False)
+        actions_layout.addWidget(self._btn_enrich)
+
+        self._btn_spectrum = QPushButton(_load_icon("spectrum.png"), "Espectro", actions_container)
+        self._btn_spectrum.clicked.connect(self._generate_spectrum_selected)
+        self._btn_spectrum.setEnabled(False)
+        actions_layout.addWidget(self._btn_spectrum)
+
+        header_layout.addWidget(actions_container, 0, Qt.AlignRight | Qt.AlignVCenter)
         layout.addWidget(header)
 
         splitter = QSplitter(Qt.Horizontal, central)
@@ -235,6 +335,8 @@ class MainWindow(QMainWindow):
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
+        self._table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_table_context_menu)
         header_view = self._table.horizontalHeader()
         header_view.setSectionsMovable(True)
         header_view.setStretchLastSection(True)
@@ -275,6 +377,181 @@ class MainWindow(QMainWindow):
             selection_model.selectionChanged.connect(self._on_selection_changed)
 
     # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+    def _open_scan_dialog(self) -> None:  # pragma: no cover - UI callback
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            QMessageBox.information(
+                self,
+                "Escaneo en progreso",
+                "Ya hay un escaneo ejecutándose. Espera a que finalice.",
+            )
+            return
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Selecciona la carpeta a escanear",
+            str(self._data_dir),
+        )
+        if not directory:
+            return
+
+        self._start_scan(Path(directory))
+
+    def _start_scan(self, directory: Path) -> None:
+        db_path = self._db_path
+        if db_path is None:
+            QMessageBox.critical(
+                self,
+                "Base de datos no disponible",
+                "No se pudo determinar la ruta de la base de datos para escanear.",
+            )
+            return
+        if not directory.exists():
+            QMessageBox.warning(
+                self,
+                "Carpeta no encontrada",
+                f"La carpeta seleccionada no existe:\n{directory}",
+            )
+            return
+
+        worker = _ScanWorker(db_path, directory, self)
+        worker.finished.connect(self._on_scan_finished)
+        worker.failed.connect(self._on_scan_failed)
+        worker.finished.connect(self._reset_scan_worker)
+        worker.failed.connect(self._reset_scan_worker)
+        worker.finished.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        self._scan_worker = worker
+        if self._btn_scan is not None:
+            self._btn_scan.setEnabled(False)
+        self._status.showMessage(f"Escaneando {directory}…")
+        worker.start()
+
+    def _reset_scan_worker(self) -> None:
+        if self._btn_scan is not None:
+            self._btn_scan.setEnabled(True)
+        self._scan_worker = None
+
+    def _on_scan_finished(self, directory: Path) -> None:
+        self._status.showMessage(f"Escaneo completado: {directory}", 5000)
+        self.refresh_results()
+
+    def _on_scan_failed(self, error: object) -> None:
+        message = str(error) if error else "No se pudo completar el escaneo."
+        QMessageBox.critical(self, "Error al escanear", message)
+        self._status.showMessage("Error durante el escaneo", 5000)
+
+    def _show_table_context_menu(self, pos: QPoint) -> None:  # pragma: no cover - UI callback
+        index = self._table.indexAt(pos)
+        if index.isValid():
+            self._select_row(index.row())
+
+        menu = self._build_table_menu()
+        if menu is None:
+            return
+
+        global_pos = self._table.viewport().mapToGlobal(pos)
+        menu.exec(global_pos)
+
+    def _build_table_menu(self) -> QMenu | None:
+        paths = self._selected_paths()
+        if not paths:
+            return None
+
+        menu = QMenu(self)
+
+        action_open = QAction(_load_icon("open.png"), "Abrir", menu)
+        action_open.triggered.connect(self._open_selected_track)
+        menu.addAction(action_open)
+
+        action_reveal = QAction(_load_icon("reveal.png"), "Mostrar en carpeta", menu)
+        action_reveal.triggered.connect(self._reveal_selected_track)
+        menu.addAction(action_reveal)
+
+        menu.addSeparator()
+
+        action_spectrum = QAction(_load_icon("spectrum.png"), "Espectro", menu)
+        action_spectrum.triggered.connect(self._generate_spectrum_selected)
+        menu.addAction(action_spectrum)
+
+        action_enrich = QAction(_load_icon("enrich.png"), "Enriquecer", menu)
+        action_enrich.triggered.connect(self._enrich_selected)
+        menu.addAction(action_enrich)
+
+        action_copy = QAction(_load_icon("copy.png"), "Copiar ruta", menu)
+        action_copy.triggered.connect(self._copy_selected_paths)
+        menu.addAction(action_copy)
+
+        return menu
+
+    def _open_selected_track(self) -> None:
+        paths = self._selected_paths()
+        if not paths:
+            QMessageBox.information(self, "Sin selección", "Selecciona una pista para abrirla.")
+            return
+
+        path = paths[0]
+        if not path.exists():
+            QMessageBox.warning(
+                self,
+                "Archivo no encontrado",
+                f"No se encontró el archivo en disco:\n{path}",
+            )
+            return
+        try:
+            open_external(path)
+        except Exception as exc:  # noqa: BLE001 - show feedback to user
+            QMessageBox.critical(
+                self,
+                "Error al abrir",
+                f"No se pudo abrir el archivo:\n{exc}",
+            )
+
+    def _reveal_selected_track(self) -> None:
+        paths = self._selected_paths()
+        if not paths:
+            QMessageBox.information(
+                self,
+                "Sin selección",
+                "Selecciona una pista para mostrarla en el explorador.",
+            )
+            return
+
+        self._reveal_in_file_manager(paths[0])
+
+    def _copy_selected_paths(self) -> None:
+        paths = self._selected_paths()
+        if not paths:
+            QMessageBox.information(self, "Sin selección", "No hay rutas para copiar.")
+            return
+
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText("\n".join(str(p) for p in paths))
+        self._status.showMessage("Ruta copiada al portapapeles", 3000)
+
+    def _enrich_selected(self) -> None:
+        if not self._current_path:
+            QMessageBox.information(
+                self,
+                "Sin selección",
+                "Selecciona una pista antes de enriquecer metadatos.",
+            )
+            return
+        # Delegamos en el panel de detalles para reutilizar la lógica existente.
+        self._details.btn_enrich.click()
+
+    def _generate_spectrum_selected(self) -> None:
+        if not self._current_path:
+            QMessageBox.information(
+                self,
+                "Sin selección",
+                "Selecciona una pista antes de generar el espectro.",
+            )
+            return
+        self._details.btn_spectrum.click()
+
+    # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
     def _on_search_text_changed(self, _: str) -> None:
@@ -286,12 +563,14 @@ class MainWindow(QMainWindow):
         if not selected.indexes():
             self._current_path = None
             self._details.clear_details()
+            self._update_action_state()
             return
         index = selected.indexes()[0]
         data = self._model.row_data(index.row())
         if not data:
             self._current_path = None
             self._details.clear_details()
+            self._update_action_state()
             return
         path = data.get("path")
         self._current_path = path if isinstance(path, str) else None
@@ -299,6 +578,7 @@ class MainWindow(QMainWindow):
             self._details.show_for_path(self._current_path, record=data)
         else:
             self._details.clear_details()
+        self._update_action_state()
 
     # ------------------------------------------------------------------
     # Data loading
@@ -360,6 +640,7 @@ class MainWindow(QMainWindow):
         if shown == 0:
             self._details.clear_details()
             self._current_path = None
+        self._update_action_state()
 
     def _format_status_message(
         self,
@@ -412,6 +693,71 @@ class MainWindow(QMainWindow):
             QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows,
         )
         self._table.scrollTo(index, QAbstractItemView.PositionAtCenter)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _selected_paths(self) -> list[Path]:
+        selection_model = self._table.selectionModel()
+        paths: list[Path] = []
+        if selection_model is not None:
+            for index in selection_model.selectedRows():
+                record = self._model.row_data(index.row())
+                path_value = record.get("path") if record else None
+                if isinstance(path_value, str):
+                    paths.append(Path(path_value))
+        if not paths and self._current_path:
+            paths.append(Path(self._current_path))
+        return paths
+
+    def _reveal_in_file_manager(self, path: Path) -> None:
+        target = path if path.exists() else path.parent
+        if target is None or not target.exists():
+            target = Path.home()
+        try:
+            if _is_macos():
+                if path.is_dir():
+                    subprocess.Popen(["open", str(target)])
+                else:
+                    subprocess.Popen(["open", "-R", str(path)])
+            elif _is_windows():
+                if path.exists() and path.is_file():
+                    subprocess.Popen(["explorer", "/select,", str(path)])
+                else:
+                    subprocess.Popen(["explorer", str(target)])
+            else:
+                launch_target = path if path.is_dir() else target
+                subprocess.Popen(["xdg-open", str(launch_target)])
+        except Exception as exc:  # noqa: BLE001 - show UI feedback
+            QMessageBox.critical(
+                self,
+                "Mostrar en carpeta",
+                f"No se pudo abrir el explorador de archivos:\n{exc}",
+            )
+
+    def _update_action_state(self) -> None:
+        has_selection = bool(self._current_path)
+        if self._btn_enrich is not None:
+            self._btn_enrich.setEnabled(has_selection)
+        if self._btn_spectrum is not None:
+            self._btn_spectrum.setEnabled(has_selection)
+
+    def _resolve_db_path(self, con: sqlite3.Connection | None) -> Path | None:
+        if con is None:
+            return None
+        try:
+            row = con.execute("PRAGMA database_list").fetchone()
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if not row:
+            return None
+        path_str = row[2]
+        if not path_str:
+            return None
+        try:
+            return Path(path_str)
+        except Exception:  # pragma: no cover - fallback for exotic paths
+            return None
 
     # ------------------------------------------------------------------
     # Qt overrides

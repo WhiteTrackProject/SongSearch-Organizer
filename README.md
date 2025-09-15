@@ -1,4 +1,4 @@
-# SongSearch Organizer (v0.3)
+# SongSearch Organizer (v0.3.1)
 
 ![Coverage](assets/coverage-badge.svg)
 
@@ -27,7 +27,9 @@ La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`.
 
 ---
 
-## ✨ Características (MVP v0.3)
+Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entre versiones.
+
+## ✨ Características (MVP v0.3.1)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
@@ -50,7 +52,7 @@ La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`.
   - Iconos de 64 px generados desde la caché local (`~/.songsearch`) con recuperación automática de portadas.
   - Tooltips HTML con previsualización ampliada a 256 px al pasar el ratón sobre el título.
 * Menú contextual
-  - Clic derecho en la tabla para acciones rápidas: **Abrir**, **Mostrar en carpeta**, **Espectrograma**, **Enriquecer**, **Obtener carátula**.
+  - Clic derecho en la tabla para acciones rápidas: **Abrir**, **Mostrar en carpeta**, **Espectrograma**, **Enriquecer**, **Copiar ruta**.
 * Flujo de escaneo y progreso
   - Botón «Escanear carpeta…» que abre el selector de directorios y lanza el proceso en un hilo dedicado.
   - Barra de progreso inferior que se activa durante el escaneo para indicar el estado de la tarea.
@@ -102,7 +104,7 @@ Crea `.env` en la raíz con tus claves:
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3 (tu_email@ejemplo.com)
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.1 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
 
@@ -227,6 +229,18 @@ ruff check .
 mypy songsearch/core
 pytest --cov=songsearch --cov-report=xml
 ```
+
+---
+
+## 🚀 Lanzamientos automáticos
+
+Los lanzamientos en GitHub se generan automáticamente cuando etiquetas una versión.
+
+1. Actualiza la versión en `pyproject.toml`, `songsearch/__init__.py`, `README.md` y añade la entrada correspondiente en `CHANGELOG.md`.
+2. Crea un commit con los cambios.
+3. Etiqueta el commit con `git tag vX.Y.Z` y publícalo con `git push --tags`.
+
+La acción de GitHub (`.github/workflows/release.yml`) generará la *release* usando el tag y adjuntará los artefactos publicados por el pipeline.
 
 ---
 
