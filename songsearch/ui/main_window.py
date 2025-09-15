@@ -231,6 +231,7 @@ class MainWindow(QMainWindow):
         search_container = QFrame(header)
         search_container.setObjectName("SearchContainer")
         search_container.setMinimumWidth(360)
+        ensure_styled_background(search_container)
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(16, 10, 16, 10)
         search_layout.setSpacing(10)
@@ -239,7 +240,6 @@ class MainWindow(QMainWindow):
         search_icon.setObjectName("SearchIcon")
         search_layout.addWidget(search_icon)
 
-        self._search.setParent(search_container)
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
         self._search.setClearButtonEnabled(True)
         self._search.setObjectName("SearchField")
@@ -298,9 +298,9 @@ class MainWindow(QMainWindow):
 
         for card in (table_card, details_card):
             shadow = QGraphicsDropShadowEffect(card)
-            shadow.setBlurRadius(32)
-            shadow.setOffset(0, 16)
-            shadow.setColor(QColor(5, 7, 15, 140))
+            shadow.setBlurRadius(28)
+            shadow.setOffset(0, 14)
+            shadow.setColor(QColor(7, 10, 22, 150))
             card.setGraphicsEffect(shadow)
 
         splitter.addWidget(table_card)

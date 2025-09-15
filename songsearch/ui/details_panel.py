@@ -82,23 +82,23 @@ class DetailsPanel(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
+        layout.setSpacing(20)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(12)
+        form.setHorizontalSpacing(20)
+        form.setVerticalSpacing(14)
 
         for key, label in self._build_detail_labels():
             form.addRow(label, self._value_labels[key])
 
         layout.addLayout(form)
 
-        layout.addSpacing(12)
+        layout.addSpacing(16)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(10)
+        actions.setSpacing(12)
 
         self.btn_open = QPushButton("Abrir…")
         actions.addWidget(self.btn_open)
