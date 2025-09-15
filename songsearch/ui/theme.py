@@ -5,7 +5,6 @@ from textwrap import dedent
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
-
 ACCENT_COLOR = QColor("#3D7DCE")
 BACKGROUND_COLOR = QColor("#0F131A")
 SURFACE_COLOR = QColor("#141B24")

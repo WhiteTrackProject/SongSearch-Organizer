@@ -106,7 +106,7 @@ class RekordboxAdapter:
     # Detection helpers
     # ------------------------------------------------------------------
     @classmethod
-    def detect(cls) -> "RekordboxAdapter | None":
+    def detect(cls) -> RekordboxAdapter | None:
         """Return an adapter instance when a database is discovered."""
 
         for candidate in _candidate_paths():
@@ -136,9 +136,12 @@ class RekordboxAdapter:
                 try:
                     rows = con.execute(query).fetchall()
                 except sqlite3.OperationalError:
-                    rows = con.execute(
-                        "SELECT ID, Name, ParentID, Attribute FROM djmdPlaylist ORDER BY COALESCE(ParentID, ID), ID"
-                    ).fetchall()
+                    fallback_query = (
+                        "SELECT ID, Name, ParentID, Attribute "
+                        "FROM djmdPlaylist "
+                        "ORDER BY COALESCE(ParentID, ID), ID"
+                    )
+                    rows = con.execute(fallback_query).fetchall()
         except sqlite3.DatabaseError as exc:  # pragma: no cover - defensive
             logger.debug("Cannot read Rekordbox playlists: %s", exc)
             return []
@@ -177,7 +180,8 @@ class RekordboxAdapter:
                 if not self._has_table(con, "djmdPlaylistTrack"):
                     return []
                 base_query = (
-                    "SELECT pt.TrackID, s.Title, s.ArtistName, c.FilePath, c.FileName, c.OriginalFileName "
+                    "SELECT pt.TrackID, s.Title, s.ArtistName, "
+                    "c.FilePath, c.FileName, c.OriginalFileName "
                     "FROM djmdPlaylistTrack pt "
                     "JOIN djmdSong s ON s.ID = pt.TrackID "
                     "LEFT JOIN djmdContent c ON c.ID = s.ContentID "
