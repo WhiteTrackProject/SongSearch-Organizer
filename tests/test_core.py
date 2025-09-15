@@ -36,6 +36,23 @@ def test_scan_and_simulate(tmp_path: Path) -> None:
     assert len(plan) == 1
 
 
+def test_scan_interrupts(tmp_path: Path) -> None:
+    db_path = init_db(tmp_path)
+    con = connect(db_path)
+    for idx in range(3):
+        _create_wav(tmp_path / f"track-{idx}.wav")
+
+    calls = {"count": 0}
+
+    def _should_stop() -> bool:
+        calls["count"] += 1
+        return True
+
+    scan_path(con, tmp_path, should_interrupt=_should_stop)
+    assert calls["count"] >= 1
+    assert query_tracks(con) == []
+
+
 def test_query_tracks_full_text(tmp_path: Path) -> None:
     db_path = init_db(tmp_path)
     con = connect(db_path)

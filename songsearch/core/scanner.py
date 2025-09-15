@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from mutagen import File as MutagenFile
@@ -22,9 +23,16 @@ TAG_KEY_ALIASES = {
 }
 
 
-def scan_path(con, root: Path):
+def scan_path(
+    con,
+    root: Path,
+    should_interrupt: Callable[[], bool] | None = None,
+):
     root = root.expanduser().resolve()
     for p in root.rglob("*"):
+        if should_interrupt is not None and should_interrupt():
+            logger.info("[scan] interrupted while visiting %s", p)
+            break
         if not p.is_file() or not is_audio(p):
             continue
         try:
