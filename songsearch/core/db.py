@@ -126,6 +126,11 @@ def update_fields(con: sqlite3.Connection, path: str, updates: Dict[str, Any]):
             con.execute("INSERT INTO tracks_fts (title,artist,album,genre,path) VALUES (?,?,?,?,?)",
                         (r["title"], r["artist"], r["album"], r["genre"], r["path"]))
 
+def get_by_path(con: sqlite3.Connection, path: str) -> sqlite3.Row | None:
+    """Return the track row for *path* or ``None`` if it doesn't exist."""
+
+    return con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()
+
 def query_tracks(con: sqlite3.Connection, where: str = "", params: Iterable[Any] = ()) -> Iterable[sqlite3.Row]:
     sql = "SELECT * FROM tracks"
     if where:
