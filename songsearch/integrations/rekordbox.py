@@ -14,9 +14,9 @@ import logging
 import os
 import platform
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 __all__ = ["RekordboxAdapter", "export_playlist_to_m3u"]
 
@@ -64,7 +64,8 @@ def _candidate_paths() -> list[Path]:
 
 
 def export_playlist_to_m3u(
-    rows: Iterable[dict[str, Any] | sqlite3.Row], output: str | Path
+    rows: Iterable[Mapping[str, Any] | sqlite3.Row | Iterable[tuple[Any, Any]]],
+    output: str | Path,
 ) -> Path:
     """Export *rows* to the UTF-8 encoded ``output`` file as an ``.m3u8`` list."""
 
@@ -75,11 +76,11 @@ def export_playlist_to_m3u(
         for row in rows:
             if isinstance(row, sqlite3.Row):
                 data = dict(row)
-            elif isinstance(row, dict):
-                data = row
+            elif isinstance(row, Mapping):
+                data = dict(row)
             else:
                 try:
-                    data = dict(row)  # type: ignore[arg-type]
+                    data = dict(cast(Iterable[tuple[Any, Any]], row))
                 except Exception:  # pragma: no cover - best effort
                     data = {}
             title = str(data.get("title") or data.get("Name") or "")

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -210,20 +211,37 @@ class DetailsPanel(QWidget):
         if not path or self._con is None:
             return None
         try:
-            return get_by_path(self._con, path)
+            row = get_by_path(self._con, path)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Cannot fetch track for %s: %s", path, exc)
             return None
+        if row is None:
+            return None
+        if isinstance(row, Mapping):
+            return dict(row)
+        if isinstance(row, sqlite3.Row):
+            return dict(row)
+        if isinstance(row, Iterable):
+            try:
+                return dict(cast(Iterable[tuple[Any, Any]], row))
+            except Exception:  # pragma: no cover - exotic row shapes
+                logger.debug("Cannot coerce record for %s", path, exc_info=True)
+                return None
+        return None
 
     def _normalize_record(self, data: Mapping[str, Any] | Any) -> dict[str, Any] | None:
         if not data:
             return None
         if isinstance(data, Mapping):
             return dict(data)
-        try:
-            return dict(data)  # type: ignore[arg-type]
-        except Exception:  # pragma: no cover - fallback for exotic row types
-            return None
+        if isinstance(data, sqlite3.Row):
+            return dict(data)
+        if isinstance(data, Iterable):
+            try:
+                return dict(cast(Iterable[tuple[Any, Any]], data))
+            except Exception:  # pragma: no cover - fallback for exotic row types
+                return None
+        return None
 
     def _format_field_value(self, field: str, value: Any) -> str:
         if value is None:
@@ -323,10 +341,12 @@ class DetailsPanel(QWidget):
         worker.start()
 
     def _on_spectrum_ready(self, result: object) -> None:
-        try:
+        if isinstance(result, Path):
+            spectrum_path = result
+        elif isinstance(result, (str, os.PathLike)):
             spectrum_path = Path(result)
-        except TypeError:  # pragma: no cover - defensive
-            logger.warning("Unexpected spectrum path: %s", result)
+        else:  # pragma: no cover - defensive logging
+            logger.warning("Unexpected spectrum path: %r", result)
             return
 
         if not spectrum_path.exists():

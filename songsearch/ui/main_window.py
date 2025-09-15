@@ -62,17 +62,17 @@ class TrackTableModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Qt model API
     # ------------------------------------------------------------------
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # type: ignore[override]  # noqa: N802
+    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(self._rows)
 
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # type: ignore[override]  # noqa: N802
+    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
         if parent is not None and parent.isValid():
             return 0
         return len(self.COLUMNS)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # type: ignore[override]
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
         if not index.isValid():
             return None
         row = index.row()
@@ -91,7 +91,7 @@ class TrackTableModel(QAbstractTableModel):
 
     def headerData(  # noqa: N802
         self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole
-    ) -> Any:  # type: ignore[override]
+    ) -> Any:
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
@@ -100,7 +100,7 @@ class TrackTableModel(QAbstractTableModel):
             return None
         return section + 1
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:  # type: ignore[override]
+    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
         if not index.isValid():
             return Qt.ItemIsEnabled
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
             db_path = init_db(self._data_dir)
             con = connect(db_path)
             logger.info("Base de datos cargada desde %s", db_path)
-        self._con = con
+        self._con: sqlite3.Connection | None = con
 
         self._model = TrackTableModel(self)
         self._details = DetailsPanel(con=self._con, data_dir=self._data_dir, parent=self)

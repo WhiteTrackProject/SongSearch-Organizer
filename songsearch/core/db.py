@@ -221,7 +221,7 @@ def query_tracks(
     where: str = "",
     params: Iterable[Any] = (),
     fts_query: str | None = None,
-) -> Iterable[sqlite3.Row]:
+) -> list[sqlite3.Row]:
     sql = "SELECT tracks.* FROM tracks"
     sql_params = list(params)
     conditions = []
@@ -234,7 +234,7 @@ def query_tracks(
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY artist, album, title"
-    return con.execute(sql, tuple(sql_params)).fetchall()
+    return list(con.execute(sql, tuple(sql_params)).fetchall())
 
 
 def _fingerprint_key(path: str) -> str:
