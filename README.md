@@ -46,7 +46,7 @@ source .venv/bin/activate
 python --version   # debe mostrar 3.13.7
 ```
 
-3) Instala dependencias Python:
+3) Instala dependencias Python (editarás `requirements.txt` con el esqueleto):
 
 ```bash
 pip install -r requirements.txt
@@ -56,15 +56,15 @@ pip install -r requirements.txt
 
 ## ⚙️ Configuración rápida
 
-Crea `.env` en la raíz con tus claves:
+Crea `.env` en la raíz con tus claves (las puedes dejar vacías para pruebas locales):
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
 MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.1 (tu_email@ejemplo.com)
-SPEK_APP_PATH=
+SPEK_APP_PATH=        # opcional: ruta a Spek/Audacity
 ```
 
-**Plantillas de organización** (`config/templates.yml`):
+**Plantillas de organización** (archivo `config/templates.yml`):
 
 ```yaml
 default: "{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
@@ -89,13 +89,13 @@ reglas:
 python -m songsearch.cli scan --path "/ruta/a/tu/musica"
 ```
 
-2. **Completar metadatos** con AcoustID/MusicBrainz:
+2. **Completar metadatos** con AcoustID/MusicBrainz (solo pistas con tags pobres):
 
 ```bash
 python -m songsearch.cli enrich --min-confidence 0.6 --write-tags false
 ```
 
-3. **Simulación de organización**:
+3. **Simulación de organización** (no mueve nada, solo vista previa y CSV):
 
 ```bash
 python -m songsearch.cli organize --template default --mode simulate --dest "/ruta/destino"
@@ -105,6 +105,9 @@ python -m songsearch.cli organize --template default --mode simulate --dest "/ru
 
 ```bash
 python -m songsearch.cli organize --template default --mode move --dest "/ruta/destino"
+# o:
+python -m songsearch.cli organize --template default --mode copy --dest "/ruta/destino"
+python -m songsearch.cli organize --template default --mode link --dest "/ruta/destino"
 ```
 
 5. **Deshacer** último lote:
@@ -193,7 +196,7 @@ LICENSE
 
 ```bash
 python - <<'PY'
-import sqlite3
+import sqlite3, sys
 print("SQLite:", sqlite3.sqlite_version)
 con = sqlite3.connect(":memory:")
 cur = con.cursor()
@@ -213,3 +216,4 @@ fpcalc -version
 ## 📜 Licencia
 
 Este proyecto se distribuye bajo la licencia [MIT](LICENSE).
+
