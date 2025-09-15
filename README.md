@@ -1,11 +1,11 @@
-# SongSearch Organizer (v0.1)
+# SongSearch Organizer (v0.2)
 
 **Organiza tu biblioteca musical** de forma **rápida, segura y reversible**.  
 Escanea carpetas, completa metadatos con **MusicBrainz/AcoustID**, detecta duplicados, y **recoloca** archivos en una nueva estructura por **Género/Año/Artista/Álbum**, con **modo simulación** y **deshacer**. Incluye **analizador de espectro** (integrado con `ffmpeg`) y lanzador externo (Spek).
 
 ---
 
-## ✨ Características (MVP v0.1)
+## ✨ Características (MVP v0.2)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
@@ -74,7 +74,7 @@ Crea `.env` en la raíz con tus claves:
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.1 (tu_email@ejemplo.com)
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.2 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
 

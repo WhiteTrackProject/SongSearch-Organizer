@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from pathlib import Path
+from .. import __version__
 from ..core.db import connect, get_by_path, init_db, query_tracks
 from ..core.scanner import scan_path
 from ..core.cover_art import ensure_cover_for_path
@@ -41,7 +42,7 @@ class ScanThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SongSearch Organizer (v0.1)")
+        self.setWindowTitle(f"SongSearch Organizer (v{__version__})")
         self.resize(1100, 700)
         self.con = connect(DB_PATH)
         self._visible_paths: set[str] = set()

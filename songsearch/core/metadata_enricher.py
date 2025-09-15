@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def _init_musicbrainz():
-    ua = os.getenv("MUSICBRAINZ_USER_AGENT") or "SongSearchOrganizer/0.1 (you@example.com)"
+    ua = os.getenv("MUSICBRAINZ_USER_AGENT") or "SongSearchOrganizer/0.2 (you@example.com)"
     app, ver, contact = _parse_user_agent(ua)
     musicbrainzngs.set_useragent(app, ver, contact)
 
 
 def _parse_user_agent(ua: str) -> Tuple[str,str,str]:
-    app = "SongSearchOrganizer"; ver = "0.1"; contact = "you@example.com"
+    app = "SongSearchOrganizer"; ver = "0.2"; contact = "you@example.com"
     try:
         if "(" in ua and ")" in ua and "/" in ua:
             appver, contact_part = ua.split("(", 1)
