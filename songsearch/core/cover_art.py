@@ -162,7 +162,7 @@ def _cleanup_partial(path: Path) -> None:
 
 
 def _is_timeout_error(error: object) -> bool:
-    if isinstance(error, (TimeoutError, socket.timeout)):
+    if isinstance(error, TimeoutError | socket.timeout):
         return True
     try:
         message = str(error)

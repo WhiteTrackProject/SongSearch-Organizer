@@ -82,7 +82,7 @@ def _first(meta, key):
     if meta is None or key is None:
         return None
 
-    if isinstance(key, (list, tuple)):
+    if isinstance(key, list | tuple):
         for name in key:
             value = _first(meta, name)
             if value not in (None, ""):
@@ -123,7 +123,7 @@ def _coerce_first(value):
             return value.decode("utf-8")
         except UnicodeDecodeError:
             return value.decode("latin-1", errors="ignore")
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         for item in value:
             normalized = _coerce_first(item)
             if normalized not in (None, ""):
