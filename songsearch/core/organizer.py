@@ -8,11 +8,33 @@ from .db import query_tracks, update_fields
 logger = logging.getLogger(__name__)
 
 
-def simulate(con, dest: Path, template: str, where: str = "", params=()):
+def simulate(
+    con,
+    dest: Path,
+    template: str,
+    where: str = "",
+    params=(),
+    require_cover: bool = False,
+    require_year: bool = False,
+    album_mode: str = "",
+    fallback_to_tags: bool = False,
+):
     dest = dest.expanduser().resolve()
     rows = query_tracks(con, where, params)
     plan: List[Tuple[str, str]] = []
     for r in rows:
+        if require_cover and not r["cover_art_url"]:
+            continue
+        if require_year and not r["year"]:
+            continue
+
+        mb_release_id = r["mb_release_id"]
+        track_template = template
+        if album_mode == "mb-release" and not mb_release_id:
+            if not fallback_to_tags:
+                continue
+            track_template = "{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
+
         meta = {
             "Genero": r["genre"] or "_",
             "Año": r["year"] or "_",
@@ -21,8 +43,9 @@ def simulate(con, dest: Path, template: str, where: str = "", params=()):
             "TrackNo": f"{int(r['track_no']):02d}" if r["track_no"] else "_",
             "Título": r["title"] or Path(r["path"]).stem,
             "ext": Path(r["path"]).suffix.lstrip(".") or "mp3",
+            "ReleaseID": mb_release_id or "_",
         }
-        rel = render_template(template, meta)
+        rel = render_template(track_template, meta)
         rel = "/".join(clean_component(c) for c in rel.split("/"))
         target = dest / rel
         target = target.with_suffix("." + meta["ext"])
