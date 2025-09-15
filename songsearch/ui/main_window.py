@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt, QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -80,8 +81,8 @@ class MainWindow(QMainWindow):
             ["Título", "Artista", "Álbum", "Género", "Año", "Ruta"]
         )
         self.table.setSortingEnabled(True)
-        self.table.setSelectionBehavior(self.table.SelectRows)
-        self.table.setEditTriggers(self.table.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
         self.table.verticalHeader().setDefaultSectionSize(ICON_SIZE + 12)
 
