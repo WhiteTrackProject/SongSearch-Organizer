@@ -102,7 +102,11 @@ class MainWindow(QMainWindow):
             self.table.sortItems(sort_section, sort_order)
 
     def _set_row_from_data(self, row_idx: int, row_data) -> None:
-        icon, tooltip = self._cover_icon_and_tooltip(row_data)
+        if isinstance(row_data, dict):
+            data_map = row_data
+        else:
+            data_map = dict(row_data)
+        icon, tooltip, cover_art_path = self._cover_icon_and_tooltip(data_map)
         columns = [
             ("title", 0),
             ("artist", 1),
@@ -112,7 +116,7 @@ class MainWindow(QMainWindow):
             ("path", 5),
         ]
         for key, column in columns:
-            value = row_data[key]
+            value = data_map.get(key)
             text = "" if value is None else str(value)
             item = self.table.item(row_idx, column)
             if item is None:
@@ -121,39 +125,35 @@ class MainWindow(QMainWindow):
             else:
                 item.setText(text)
             if column == 0:
-                item.setData(Qt.UserRole, row_data["path"])
+                item.setData(Qt.UserRole, data_map.get("path"))
+                item.setData(Qt.UserRole + 1, str(cover_art_path) if cover_art_path else None)
+                item.setData(Qt.UserRole + 2, data_map.get("cover_art_url"))
                 item.setIcon(icon if icon is not None else QIcon())
             item.setToolTip(tooltip or "")
-        self._visible_paths.add(row_data["path"])
+        self._visible_paths.add(data_map["path"])
 
-    def _cover_icon_and_tooltip(self, row_data) -> tuple[Optional[QIcon], Optional[str]]:
-        if isinstance(row_data, dict):
-            data_map = row_data
-        else:
-            data_map = dict(row_data)
+    def _cover_icon_and_tooltip(
+        self, data_map
+    ) -> tuple[Optional[QIcon], Optional[str], Optional[Path]]:
         track_path = data_map.get("path")
         if not track_path:
-            return None, None
-        cover_url = data_map.get("cover_art_url")
-        try:
-            cover_path = ensure_cover_for_path(DATA_DIR, Path(track_path), cover_url)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Cannot resolve cover for %s: %s", track_path, exc)
-            return None, None
-        if not cover_path:
-            return None, None
-        pixmap = QPixmap(str(cover_path))
+            return None, None, None
+        cover_art_url = data_map.get("cover_art_url")
+        cover_art_path = self._ensure_cover_art(track_path, cover_art_url)
+        if not cover_art_path:
+            return None, None, None
+        pixmap = QPixmap(str(cover_art_path))
         if pixmap.isNull():
-            logger.debug("Pixmap is null for cover %s", cover_path)
-            return None, None
+            logger.debug("Pixmap is null for cover %s", cover_art_path)
+            return None, None, None
         icon_pixmap = pixmap.scaled(ICON_SIZE, ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         icon = QIcon(icon_pixmap)
         try:
-            resolved = cover_path.resolve()
+            resolved = cover_art_path.resolve()
         except Exception:  # pragma: no cover - fallback for exotic paths
-            resolved = cover_path
+            resolved = cover_art_path
             try:
-                resolved = cover_path.absolute()
+                resolved = cover_art_path.absolute()
             except Exception:
                 pass
         try:
@@ -161,7 +161,16 @@ class MainWindow(QMainWindow):
         except Exception:  # pragma: no cover - final fallback
             uri = f"file://{resolved.as_posix()}"
         tooltip = f'<div style="margin:4px"><img src="{uri}" width="{TOOLTIP_PREVIEW_SIZE}" /></div>'
-        return icon, tooltip
+        return icon, tooltip, cover_art_path
+
+    def _ensure_cover_art(self, track_path: str, cover_art_url: Optional[str]) -> Optional[Path]:
+        if not track_path:
+            return None
+        try:
+            return ensure_cover_for_path(DATA_DIR, Path(track_path), cover_art_url)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Cannot resolve cover for %s: %s", track_path, exc)
+            return None
 
     def _find_row_index_by_path(self, path: str) -> Optional[int]:
         if not path:
