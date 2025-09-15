@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import imghdr
 import logging
 from hashlib import sha1
 from pathlib import Path
@@ -121,12 +120,39 @@ def _normalise_extension(ext: str) -> str:
 
 
 def _ext_from_imghdr(path: Path) -> str:
-    kind = imghdr.what(path)
-    if not kind:
+    """Best-effort image type detection.
+
+    The project previously relied on :mod:`imghdr` which has been removed in
+    Python 3.13.  To remain dependency free we implement the tiny subset of
+    functionality we require.  Only a handful of common formats are supported
+    and an empty string is returned if the file type cannot be determined.
+    """
+
+    try:
+        header = path.read_bytes()[:12]
+    except OSError:
         return ""
-    if kind == "jpeg":
+
+    # JPEG
+    if header.startswith(b"\xff\xd8\xff"):
         return ".jpg"
-    return "." + kind
+    # PNG
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    # GIF
+    if header[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    # WEBP
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return ".webp"
+    # BMP
+    if header.startswith(b"BM"):
+        return ".bmp"
+    # TIFF (little or big endian)
+    if header[:4] in (b"II*\x00", b"MM\x00*"):
+        return ".tiff"
+
+    return ""
 
 
 def _download(url: str, destination: Path) -> bool:
