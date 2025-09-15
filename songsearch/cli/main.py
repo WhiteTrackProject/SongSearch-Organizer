@@ -5,6 +5,7 @@ import typer
 from rich import print
 from rich.table import Table
 from dotenv import load_dotenv
+import json
 import logging
 
 from ..core.db import init_db, connect
@@ -166,11 +167,16 @@ def dupes(
             print("[dim]Mostrando solo los 50 primeros grupos…[/dim]")
     if move_to:
         dest = Path(move_to).expanduser()
+        ops = []
         total = 0
         for g in groups:
             applied = resolve_move_others(con, g, dest)
+            ops.extend({"op": "move", "src": s, "dst": d} for s, d in applied)
             total += len(applied)
-        print(f"[green]Movidos {total} duplicados a[/green] {dest}")
+        if ops:
+            UNDO_LOG.parent.mkdir(parents=True, exist_ok=True)
+            UNDO_LOG.write_text(json.dumps(ops, ensure_ascii=False, indent=2))
+        print(f"[green]Movidos {total} duplicados a[/green] {dest}. Undo log: {UNDO_LOG}")
 
 
 def _load_template(name: str) -> str:

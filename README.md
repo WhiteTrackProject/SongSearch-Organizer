@@ -117,6 +117,7 @@ python -m songsearch.cli undo
 
 ```bash
 python -m songsearch.cli spectrum --input "/ruta/tema.flac"
+python -m songsearch.cli spectrum --input "/ruta/tema.flac" --open-external
 ```
 
 7. **Carátulas (lote)**:
@@ -169,6 +170,22 @@ logs/
 requirements.txt
 LICENSE
 ```
+
+---
+
+## 🔒 Seguridad y reversibilidad
+
+- **Modo simulación** por defecto para revisar antes de mover.
+- **Log de operaciones** para revertir con `undo`.
+- Protección contra sobrescritura: destinos únicos y papelera opcional.
+
+---
+
+## 📈 Roadmap corto
+
+- v0.1: Organización básica, duplicados, enriquecimiento y UI mínima.
+- v0.2: Edición en lote, cache de carátulas, perfiles de exportación.
+- v0.3: BPM/Key opcional, listas avanzadas y módulos externos.
 
 ---
 
