@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import logging
+import socket
 from pathlib import Path
+from hashlib import sha1
 from urllib.error import URLError
 
 import pytest
@@ -72,7 +75,8 @@ def test_ensure_cover_downloads_and_caches(monkeypatch: pytest.MonkeyPatch, tmp_
         def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - protocol
             return None
 
-    def fake_urlopen(url: str):
+    def fake_urlopen(url: str, *, timeout: float):
+        assert timeout == cover_art._DOWNLOAD_TIMEOUT
         calls.append(url)
         return DummyResponse(png_data)
 
@@ -99,7 +103,8 @@ def test_ensure_cover_download_failure_returns_local(monkeypatch: pytest.MonkeyP
     fallback = track.with_suffix(".png")
     fallback.write_bytes(b"fallback")
 
-    def failing_urlopen(url: str):
+    def failing_urlopen(url: str, *, timeout: float):
+        assert timeout == cover_art._DOWNLOAD_TIMEOUT
         raise URLError("boom")
 
     monkeypatch.setattr(cover_art.request, "urlopen", failing_urlopen)
@@ -107,3 +112,32 @@ def test_ensure_cover_download_failure_returns_local(monkeypatch: pytest.MonkeyP
     resolved = ensure_cover_for_path(data_dir, track, "http://example.com/missing.png")
 
     assert resolved == fallback
+
+
+def test_download_timeout_cleans_up_partial_file(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    data_dir = tmp_path / "cache"
+    track = _make_track(tmp_path / "collection", "timeout.mp3")
+    fallback = track.with_suffix(".jpg")
+    fallback.write_bytes(b"fallback")
+
+    url = "http://example.com/slow-image"
+
+    def timeout_urlopen(urlopen_url: str, *, timeout: float):
+        assert timeout == cover_art._DOWNLOAD_TIMEOUT
+        raise URLError(socket.timeout("timed out"))
+
+    monkeypatch.setattr(cover_art.request, "urlopen", timeout_urlopen)
+
+    caplog.set_level(logging.WARNING)
+
+    resolved = ensure_cover_for_path(data_dir, track, url)
+
+    assert resolved == fallback
+
+    base_name = sha1(url.encode("utf-8")).hexdigest()
+    temp_path = data_dir / "covers" / f"{base_name}.part"
+
+    assert not temp_path.exists()
+    assert any("Timed out downloading" in record.message for record in caplog.records)

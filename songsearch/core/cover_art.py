@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 from hashlib import sha1
 from pathlib import Path
 from typing import Iterable, Optional
@@ -9,6 +10,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+_DOWNLOAD_TIMEOUT = 10
 
 _KNOWN_EXTENSIONS: tuple[str, ...] = (
     ".jpg",
@@ -155,6 +158,23 @@ def _ext_from_imghdr(path: Path) -> str:
     return ""
 
 
+def _cleanup_partial(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:  # pragma: no cover - best effort cleanup
+        pass
+
+
+def _is_timeout_error(error: object) -> bool:
+    if isinstance(error, (TimeoutError, socket.timeout)):
+        return True
+    try:
+        message = str(error)
+    except Exception:  # pragma: no cover - defensive
+        return False
+    return "timed out" in message.lower()
+
+
 def _download(url: str, destination: Path) -> bool:
     """Download a file from *url* into *destination*.
 
@@ -171,13 +191,29 @@ def _download(url: str, destination: Path) -> bool:
         ``True`` if the download succeeded, otherwise ``False``.
     """
     try:
-        with request.urlopen(url) as response:
+        with request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT) as response:
             destination.write_bytes(response.read())
             return True
-    except (HTTPError, URLError) as exc:
+    except HTTPError as exc:
         logger.warning("Failed to download %s: %s", url, exc)
+        _cleanup_partial(destination)
+    except URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        if _is_timeout_error(reason):
+            logger.warning(
+                "Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, reason
+            )
+        else:
+            logger.warning("Failed to download %s: %s", url, exc)
+        _cleanup_partial(destination)
+    except TimeoutError as exc:
+        logger.warning(
+            "Timed out downloading %s after %ss: %s", url, _DOWNLOAD_TIMEOUT, exc
+        )
+        _cleanup_partial(destination)
     except Exception as exc:  # pragma: no cover - unexpected errors
         logger.error("Unexpected error downloading %s: %s", url, exc)
+        _cleanup_partial(destination)
     return False
 
 
