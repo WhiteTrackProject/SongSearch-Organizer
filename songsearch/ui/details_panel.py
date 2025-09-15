@@ -59,7 +59,6 @@ class DetailsPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("DetailsPanel")
-        ensure_styled_background(self, minimum_width=360)
         self._con = con
         self._current_data: dict[str, Any] | None = None
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
@@ -148,8 +147,6 @@ class DetailsPanel(QWidget):
             value_label.setObjectName(f"value_{field}")
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             value_label.setProperty("valueLabel", True)
-            value_label.setWordWrap(True)
-            value_label.setMinimumHeight(24)
             self._value_labels[field] = value_label
             label = QLabel(f"{text}:")
             label.setProperty("formLabel", True)
