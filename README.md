@@ -1,18 +1,40 @@
-# SongSearch Organizer (v0.2)
+# SongSearch Organizer (v0.3)
+
+![Coverage](assets/coverage-badge.svg)
 
 **Organiza tu biblioteca musical** de forma **rápida, segura y reversible**.  
 Escanea carpetas, completa metadatos con **MusicBrainz/AcoustID**, detecta duplicados, y **recoloca** archivos en una nueva estructura por **Género/Año/Artista/Álbum**, con **modo simulación** y **deshacer**. Incluye **analizador de espectro** (integrado con `ffmpeg`) y lanzador externo (Spek).
 
+## 📦 Instalación rápida
+
+```bash
+pip install songsearch-organizer
+# o bien
+pipx install songsearch-organizer
+# y ejecuta la CLI directamente
+songsearch --help
+```
+
+Para desarrollo o contribución:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install .[dev]
+pre-commit install
+```
+
+La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`. Ejecuta `pip install -r requirements.lock` si necesitas un entorno idéntico al CI.
+
 ---
 
-## ✨ Características (MVP v0.2)
+## ✨ Características (MVP v0.3)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
 - **Modo Simulación**: vista previa `Ruta actual → Nueva ruta` antes de mover/copiar/enlazar.
 - **Deshacer**: log de operaciones para revertir en 1 clic.
 - **Detección de archivos perdidos** y reubicación por cambio de raíz.
-- **Duplicados**: agrupación por `duración±1s+tamaño+formato` + hash parcial opcional.
+- **Duplicados**: agrupación por `duración±1s+tamaño+formato` + hash parcial opcional, con resolución automática que prioriza formatos sin pérdida, mayor bitrate y duración estable.
 - **Metadatos**: `pyacoustid + Chromaprint` → `AcoustID` → `MusicBrainz` (+ Cover Art).
 - **Espectro**: generar PNG con `ffmpeg` (y abrir Spek/Audacity si lo prefieres).
 - **UI rápida** (PySide6): buscador, tabla de resultados, panel de detalles, progreso.
@@ -67,7 +89,9 @@ python --version   # debe mostrar 3.13.7
 3) Instala dependencias Python:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.lock
+# o, para un entorno editable de desarrollo
+pip install .[dev]
 ```
 
 ---
@@ -78,9 +102,11 @@ Crea `.env` en la raíz con tus claves:
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.2 (tu_email@ejemplo.com)
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
+
+> ℹ️ `.env` está en `.gitignore`; guarda aquí tus claves sin riesgo de subirlas al repositorio.
 
 **Plantillas de organización** (`config/templates.yml`):
 
@@ -111,6 +137,22 @@ reglas:
 **Variables especiales:**
 
 - `{ReleaseID}`: identificador (UUID) del lanzamiento en MusicBrainz, disponible tras enriquecer metadatos.
+
+---
+
+## 🗃️ Caché y escaneo incremental
+
+- **Escaneo inteligente**: los archivos cuyo `mtime` y tamaño no cambian se omiten en escaneos posteriores, acelerando las sincronizaciones grandes.
+- **Base de datos local**: la carpeta `~/.songsearch/` almacena `songsearch.db`, registros de deshacer y las miniaturas de carátulas. Puedes respaldarla o eliminarla para empezar de cero.
+- **Fingerprint cache**: los resultados de AcoustID/MusicBrainz se guardan en la tabla `fingerprint_cache`, evitando llamadas repetidas cuando vuelves a enriquecer la biblioteca.
+
+---
+
+## 🌐 Buenas prácticas con MusicBrainz/AcoustID
+
+- Identifícate con un `MUSICBRAINZ_USER_AGENT` válido (`App/Versión (contacto)`).
+- El cliente aplica **rate limiting** y reintentos con backoff. Si automatizas tareas largas, considera espaciar los lotes (`--limit`) para respetar las políticas de ambas APIs.
+- Con la caché integrada, los reintentos solo ocurren cuando no hay resultados almacenados o la confianza es inferior al umbral definido.
 
 ---
 
@@ -156,6 +198,15 @@ python -m songsearch.cli spectrum --input "/ruta/tema.flac"
 
 ```bash
 python -m songsearch.app
+```
+
+8. **Calidad / CI local**:
+
+```bash
+ruff format .
+ruff check .
+mypy songsearch/core
+pytest --cov=songsearch --cov-report=xml
 ```
 
 ---

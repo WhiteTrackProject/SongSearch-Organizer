@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import re
 import unicodedata
 from pathlib import Path
 
-AUDIO_EXT = {".mp3",".flac",".wav",".aiff",".aif",".m4a",".ogg",".opus",".wma"}
+AUDIO_EXT = {".mp3", ".flac", ".wav", ".aiff", ".aif", ".m4a", ".ogg", ".opus", ".wma"}
 
 _illegal = re.compile(r'[<>:"/\\|?*\0]')
 

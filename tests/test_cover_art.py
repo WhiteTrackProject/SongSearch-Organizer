@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import base64
 import logging
-import socket
-from pathlib import Path
 from hashlib import sha1
+from pathlib import Path
 from urllib.error import URLError
 
 import pytest
@@ -39,9 +38,7 @@ def test_ensure_cover_resolves_relative_and_file_uri(tmp_path: Path) -> None:
     relative_cover = track.parent / "images" / "art.png"
     relative_cover.parent.mkdir(parents=True, exist_ok=True)
     relative_cover.write_bytes(b"img")
-    resolved_relative = ensure_cover_for_path(
-        data_dir, track, "images/art.png"
-    )
+    resolved_relative = ensure_cover_for_path(data_dir, track, "images/art.png")
     assert resolved_relative == relative_cover
 
     # File URI reference
@@ -97,7 +94,9 @@ def test_ensure_cover_downloads_and_caches(monkeypatch: pytest.MonkeyPatch, tmp_
     assert len(calls) == 1
 
 
-def test_ensure_cover_download_failure_returns_local(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_ensure_cover_download_failure_returns_local(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     data_dir = tmp_path / "cache"
     track = _make_track(tmp_path / "collection", "track.mp3")
     fallback = track.with_suffix(".png")
@@ -126,7 +125,7 @@ def test_download_timeout_cleans_up_partial_file(
 
     def timeout_urlopen(urlopen_url: str, *, timeout: float):
         assert timeout == cover_art._DOWNLOAD_TIMEOUT
-        raise URLError(socket.timeout("timed out"))
+        raise URLError(TimeoutError("timed out"))
 
     monkeypatch.setattr(cover_art.request, "urlopen", timeout_urlopen)
 

@@ -1,22 +1,31 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
-
+import logging
 import time
-
-from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem,
-    QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar, QMessageBox
-)
-from PySide6.QtCore import Qt, QThread, Signal, QSize
-from PySide6.QtGui import QIcon, QPixmap
+from collections.abc import Iterable
 from pathlib import Path
+
+from PySide6.QtCore import QSize, Qt, QThread, Signal
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from .. import __version__
+from ..core.cover_art import ensure_cover_for_path
 from ..core.db import connect, fts_query_from_text, get_by_path, init_db, query_tracks
 from ..core.scanner import scan_path
-from ..core.cover_art import ensure_cover_for_path
-from ..core.spectrum import open_external
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +58,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 700)
         self.con = connect(DB_PATH)
         self._visible_paths: set[str] = set()
-        self._scan_thread: Optional[ScanThread] = None
+        self._scan_thread: ScanThread | None = None
 
         self.search = QLineEdit(self)
         self.search.setPlaceholderText("Buscar (título, artista, álbum, género, ruta)…")
@@ -67,7 +76,9 @@ class MainWindow(QMainWindow):
         top.addWidget(self.btn_scan)
 
         self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Título","Artista","Álbum","Género","Año","Ruta"])
+        self.table.setHorizontalHeaderLabels(
+            ["Título", "Artista", "Álbum", "Género", "Año", "Ruta"]
+        )
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(self.table.SelectRows)
         self.table.setEditTriggers(self.table.NoEditTriggers)
@@ -109,9 +120,7 @@ class MainWindow(QMainWindow):
         if sort_enabled and sort_section >= 0:
             self.table.sortItems(sort_section, sort_order)
         elapsed = time.perf_counter() - t0
-        self.statusBar().showMessage(
-            f"{len(rows)} resultados en {elapsed:.3f} s"
-        )
+        self.statusBar().showMessage(f"{len(rows)} resultados en {elapsed:.3f} s")
 
     def _set_row_from_data(self, row_idx: int, row_data) -> None:
         if isinstance(row_data, dict):
@@ -144,9 +153,7 @@ class MainWindow(QMainWindow):
             item.setToolTip(tooltip or "")
         self._visible_paths.add(data_map["path"])
 
-    def _cover_icon_and_tooltip(
-        self, data_map
-    ) -> tuple[Optional[QIcon], Optional[str], Optional[Path]]:
+    def _cover_icon_and_tooltip(self, data_map) -> tuple[QIcon | None, str | None, Path | None]:
         track_path = data_map.get("path")
         if not track_path:
             return None, None, None
@@ -158,7 +165,9 @@ class MainWindow(QMainWindow):
         if pixmap.isNull():
             logger.debug("Pixmap is null for cover %s", cover_art_path)
             return None, None, None
-        icon_pixmap = pixmap.scaled(ICON_SIZE, ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        icon_pixmap = pixmap.scaled(
+            ICON_SIZE, ICON_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
         icon = QIcon(icon_pixmap)
         try:
             resolved = cover_art_path.resolve()
@@ -172,10 +181,12 @@ class MainWindow(QMainWindow):
             uri = resolved.as_uri()
         except Exception:  # pragma: no cover - final fallback
             uri = f"file://{resolved.as_posix()}"
-        tooltip = f'<div style="margin:4px"><img src="{uri}" width="{TOOLTIP_PREVIEW_SIZE}" /></div>'
+        tooltip = (
+            f'<div style="margin:4px"><img src="{uri}" width="{TOOLTIP_PREVIEW_SIZE}" /></div>'
+        )
         return icon, tooltip, cover_art_path
 
-    def _ensure_cover_art(self, track_path: str, cover_art_url: Optional[str]) -> Optional[Path]:
+    def _ensure_cover_art(self, track_path: str, cover_art_url: str | None) -> Path | None:
         if not track_path:
             return None
         try:
@@ -184,7 +195,7 @@ class MainWindow(QMainWindow):
             logger.warning("Cannot resolve cover for %s: %s", track_path, exc)
             return None
 
-    def _find_row_index_by_path(self, path: str) -> Optional[int]:
+    def _find_row_index_by_path(self, path: str) -> int | None:
         if not path:
             return None
         for idx in range(self.table.rowCount()):
@@ -227,7 +238,7 @@ class MainWindow(QMainWindow):
         d = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de música")
         if d:
             self.progress.setVisible(True)
-            self.progress.setRange(0,0)
+            self.progress.setRange(0, 0)
             self._scan_thread = ScanThread(self.con, d)
             self._scan_thread.finished.connect(self.on_scan_finished)
             self._scan_thread.start()

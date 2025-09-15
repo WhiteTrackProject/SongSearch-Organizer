@@ -1,6 +1,10 @@
 from __future__ import annotations
+
+import logging
+import shutil
+import subprocess
+import sys
 from pathlib import Path
-import subprocess, shutil, sys, logging
 
 logger = logging.getLogger(__name__)
 
@@ -12,15 +16,21 @@ def generate_spectrogram(input_path: Path, out_dir: Path) -> Path:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg no encontrado en PATH")
     cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(input_path),
-        "-lavfi", "showspectrumpic=s=1200x600:legend=disabled",
-        str(out_png)
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(input_path),
+        "-lavfi",
+        "showspectrumpic=s=1200x600:legend=disabled",
+        str(out_png),
     ]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
-        logger.error("ffmpeg error: %s", e.stderr.decode(errors='ignore'))
+        logger.error("ffmpeg error: %s", e.stderr.decode(errors="ignore"))
         raise RuntimeError("ffmpeg failed") from e
     return out_png
 
