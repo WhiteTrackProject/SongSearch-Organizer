@@ -1,184 +1,264 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from textwrap import dedent
 
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
-ACCENT_COLOR = QColor("#3D7DCE")
-BACKGROUND_COLOR = QColor("#0F131A")
-SURFACE_COLOR = QColor("#141B24")
-SURFACE_ELEVATED_COLOR = QColor("#111821")
-BASE_TEXT_COLOR = QColor("#E6EBF3")
-MUTED_TEXT_COLOR = QColor("#9AA6B8")
-DISABLED_TEXT_COLOR = QColor("#5C6775")
-GRIDLINE_COLOR = QColor("#1F2732")
-BUTTON_COLOR = QColor("#182130")
-BUTTON_HOVER_COLOR = QColor("#203047")
-BUTTON_PRESSED_COLOR = QColor("#2B4363")
-SCROLLBAR_TRACK_COLOR = QColor("#0F141C")
-SCROLLBAR_HANDLE_COLOR = QColor("#243248")
-SCROLLBAR_HANDLE_HOVER_COLOR = QColor("#345079")
+
+@dataclass(frozen=True)
+class PremiumColors:
+    """Curated palette for a polished SongSearch dark theme."""
+
+    accent: QColor = QColor("#6C7CFF")
+    accent_hover: QColor = QColor("#8895FF")
+    accent_pressed: QColor = QColor("#515FE6")
+    background: QColor = QColor("#070B13")
+    background_elevated: QColor = QColor("#0E1421")
+    surface: QColor = QColor("#131A2C")
+    surface_alt: QColor = QColor("#171F33")
+    outline: QColor = QColor("#1D2437")
+    outline_soft: QColor = QColor("#262F47")
+    text_primary: QColor = QColor("#F1F4FD")
+    text_secondary: QColor = QColor("#AEB8CF")
+    text_muted: QColor = QColor("#6F7B92")
 
 
-def _build_palette() -> QPalette:
+def _hex(color: QColor) -> str:
+    return QColor(color).name(QColor.HexRgb)
+
+
+def _hexa(color: QColor, alpha: int) -> str:
+    shaded = QColor(color)
+    shaded.setAlpha(alpha)
+    return shaded.name(QColor.HexArgb)
+
+
+def _build_palette(colors: PremiumColors) -> QPalette:
     palette = QPalette()
-    palette.setColor(QPalette.Window, BACKGROUND_COLOR)
-    palette.setColor(QPalette.WindowText, BASE_TEXT_COLOR)
-    palette.setColor(QPalette.Base, QColor("#0B1118"))
-    palette.setColor(QPalette.AlternateBase, QColor("#121821"))
-    palette.setColor(QPalette.ToolTipBase, SURFACE_ELEVATED_COLOR)
-    palette.setColor(QPalette.ToolTipText, BASE_TEXT_COLOR)
-    palette.setColor(QPalette.Text, BASE_TEXT_COLOR)
-    palette.setColor(QPalette.Button, SURFACE_COLOR)
-    palette.setColor(QPalette.ButtonText, BASE_TEXT_COLOR)
-    palette.setColor(QPalette.Highlight, ACCENT_COLOR)
-    palette.setColor(QPalette.HighlightedText, QColor("#F6F8FB"))
-    palette.setColor(QPalette.Link, ACCENT_COLOR)
-    palette.setColor(QPalette.LinkVisited, QColor("#6E8FCE"))
+    palette.setColor(QPalette.Window, colors.background)
+    palette.setColor(QPalette.WindowText, colors.text_primary)
+    palette.setColor(QPalette.Base, colors.surface)
+    palette.setColor(QPalette.AlternateBase, colors.surface_alt)
+    palette.setColor(QPalette.ToolTipBase, colors.surface_alt)
+    palette.setColor(QPalette.ToolTipText, colors.text_primary)
+    palette.setColor(QPalette.Text, colors.text_primary)
+    palette.setColor(QPalette.Button, colors.surface)
+    palette.setColor(QPalette.ButtonText, colors.text_primary)
+    palette.setColor(QPalette.Highlight, colors.accent)
+    palette.setColor(QPalette.HighlightedText, QColor("#0B0F1A"))
+    palette.setColor(QPalette.Link, colors.accent)
+    palette.setColor(QPalette.LinkVisited, QColor("#92A0FF"))
+    palette.setColor(QPalette.PlaceholderText, colors.text_muted)
 
-    palette.setColor(QPalette.Disabled, QPalette.Text, DISABLED_TEXT_COLOR)
-    palette.setColor(QPalette.Disabled, QPalette.ButtonText, DISABLED_TEXT_COLOR)
-    palette.setColor(QPalette.Disabled, QPalette.WindowText, DISABLED_TEXT_COLOR)
-    palette.setColor(QPalette.Disabled, QPalette.Highlight, QColor("#29313C"))
-    palette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor("#8C939E"))
+    palette.setColor(QPalette.Disabled, QPalette.Text, colors.text_muted)
+    palette.setColor(QPalette.Disabled, QPalette.ButtonText, colors.text_muted)
+    palette.setColor(QPalette.Disabled, QPalette.WindowText, colors.text_muted)
+    palette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(colors.accent).darker(170))
+    palette.setColor(QPalette.Disabled, QPalette.HighlightedText, colors.text_secondary)
+    palette.setColor(QPalette.Disabled, QPalette.PlaceholderText, colors.text_muted)
     return palette
 
 
-def _build_stylesheet() -> str:
+def _build_stylesheet(colors: PremiumColors) -> str:
     return dedent(
         f"""
-        * {{
-            color: {BASE_TEXT_COLOR.name()};
-            font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        QWidget {{
+            background-color: {_hex(colors.background)};
+            color: {_hex(colors.text_primary)};
+            font-family: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+            font-size: 13px;
+            letter-spacing: 0.2px;
         }}
 
         QMainWindow, QWidget#MainContainer {{
-            background-color: {BACKGROUND_COLOR.name()};
+            background-color: {_hex(colors.background)};
         }}
 
-        QLineEdit {{
-            background-color: #151B23;
-            border: 1px solid #1F2630;
+        QFrame#HeaderBar {{
+            background-color: {_hex(colors.background_elevated)};
+            border-radius: 20px;
+            border: 1px solid {_hex(colors.outline)};
+        }}
+
+        QLabel#AppTitle {{
+            color: {_hex(colors.text_primary)};
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }}
+
+        QLabel#AppSubtitle {{
+            color: {_hex(colors.text_secondary)};
+            font-size: 12.5px;
+            letter-spacing: 0.3px;
+        }}
+
+        QLabel#HeaderBadge {{
+            background-color: {_hexa(colors.accent, 42)};
+            color: {_hex(colors.accent)};
+            padding: 4px 12px;
             border-radius: 10px;
-            padding: 8px 12px;
-            selection-background-color: {ACCENT_COLOR.name()};
-            selection-color: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
         }}
-        QLineEdit:hover {{
-            border-color: #2F3B4B;
+
+        QFrame#SearchContainer {{
+            background-color: {_hex(colors.surface)};
+            border-radius: 16px;
+            border: 1px solid {_hex(colors.outline)};
         }}
-        QLineEdit:focus {{
-            border-color: {ACCENT_COLOR.name()};
+        QFrame#SearchContainer:hover {{
+            border-color: {_hex(colors.outline_soft)};
+        }}
+
+        QLabel#SearchIcon {{
+            color: {_hex(colors.text_secondary)};
+            font-size: 16px;
+            padding-right: 4px;
+        }}
+
+        QLabel#SearchHint {{
+            color: {_hex(colors.text_muted)};
+            font-size: 11.5px;
+            border-left: 1px solid {_hex(colors.outline)};
+            padding-left: 10px;
+            margin-left: 6px;
+        }}
+
+        QLineEdit#SearchField {{
+            background: transparent;
+            border: none;
+            color: {_hex(colors.text_primary)};
+            font-size: 13px;
+            padding: 0px;
+        }}
+        QLineEdit#SearchField:focus {{
+            color: {_hex(colors.text_primary)};
+        }}
+
+        QFrame#TableCard, QFrame#DetailsCard {{
+            background-color: {_hex(colors.background_elevated)};
+            border-radius: 20px;
+            border: 1px solid {_hex(colors.outline)};
+        }}
+        QFrame#TableCard:hover, QFrame#DetailsCard:hover {{
+            border-color: {_hex(colors.outline_soft)};
         }}
 
         QTableView {{
-            background-color: #10161F;
-            alternate-background-color: #0B121B;
-            border: 1px solid {GRIDLINE_COLOR.name()};
-            border-radius: 12px;
-            gridline-color: {GRIDLINE_COLOR.name()};
-            selection-background-color: rgba(61, 125, 206, 140);
-            selection-color: #F6F8FB;
+            background-color: transparent;
+            alternate-background-color: {_hex(colors.surface)};
+            border: none;
+            color: {_hex(colors.text_primary)};
+            gridline-color: {_hex(colors.outline)};
+            selection-background-color: {_hexa(colors.accent, 150)};
+            selection-color: {_hex(colors.text_primary)};
         }}
         QTableView::item {{
-            padding: 6px;
+            padding: 6px 12px;
         }}
 
         QHeaderView::section {{
-            background-color: #141C27;
-            color: #CED6E1;
-            padding: 8px 6px;
+            background-color: {_hex(colors.background_elevated)};
+            color: {_hex(colors.text_secondary)};
             border: none;
-            border-bottom: 1px solid {GRIDLINE_COLOR.name()};
+            border-bottom: 1px solid {_hex(colors.outline)};
+            padding: 10px 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-size: 11px;
         }}
         QHeaderView::section:horizontal {{
-            border-right: 1px solid {GRIDLINE_COLOR.name()};
+            border-right: 1px solid {_hex(colors.outline)};
         }}
         QHeaderView::section:horizontal:last {{
             border-right: none;
         }}
-
         QTableCornerButton::section {{
-            background-color: #141C27;
+            background-color: {_hex(colors.background_elevated)};
             border: none;
-            border-bottom: 1px solid {GRIDLINE_COLOR.name()};
+        }}
+
+        QLabel[formLabel="true"] {{
+            color: {_hex(colors.text_muted)};
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.1px;
+            font-weight: 600;
+        }}
+        QLabel[valueLabel="true"] {{
+            color: {_hex(colors.text_primary)};
+            font-size: 13px;
+        }}
+
+        QPushButton {{
+            background-color: {_hexa(colors.accent, 40)};
+            color: {_hex(colors.text_primary)};
+            border: 1px solid {_hex(colors.outline)};
+            border-radius: 10px;
+            padding: 8px 18px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{
+            border-color: {_hex(colors.outline_soft)};
+            background-color: {_hexa(colors.accent, 64)};
+        }}
+        QPushButton:pressed {{
+            background-color: {_hexa(colors.accent, 90)};
+        }}
+        QPushButton:disabled {{
+            background-color: {_hex(colors.outline)};
+            border-color: {_hex(colors.outline)};
+            color: {_hex(colors.text_muted)};
+        }}
+        QPushButton[accentButton="true"] {{
+            background-color: {_hex(colors.accent)};
+            border: none;
+            color: #080B12;
+        }}
+        QPushButton[accentButton="true"]:hover {{
+            background-color: {_hex(colors.accent_hover)};
+        }}
+        QPushButton[accentButton="true"]:pressed {{
+            background-color: {_hex(colors.accent_pressed)};
         }}
 
         QStatusBar {{
-            background-color: {BACKGROUND_COLOR.name()};
-            border-top: 1px solid {GRIDLINE_COLOR.name()};
-            color: {MUTED_TEXT_COLOR.name()};
+            background-color: transparent;
+            color: {_hex(colors.text_secondary)};
+            border-top: 1px solid {_hex(colors.outline)};
+            padding: 6px 8px 4px;
         }}
         QStatusBar::item {{
             border: none;
         }}
 
-        QWidget#DetailsPanel {{
-            background-color: {SURFACE_ELEVATED_COLOR.name()};
-            border: 1px solid {GRIDLINE_COLOR.name()};
-            border-radius: 12px;
+        QSplitter#MainSplitter::handle {{
+            background-color: {_hex(colors.outline)};
+            margin: 20px 0;
+            width: 1px;
         }}
-
-        QWidget#DetailsPanel QPushButton {{
-            min-height: 32px;
-        }}
-
-        QPushButton {{
-            background-color: {BUTTON_COLOR.name()};
-            border: 1px solid #283142;
-            border-radius: 8px;
-            padding: 6px 16px;
-            color: #DFE6F1;
-            font-weight: 600;
-        }}
-        QPushButton:hover {{
-            background-color: {BUTTON_HOVER_COLOR.name()};
-            border-color: {ACCENT_COLOR.name()};
-        }}
-        QPushButton:pressed {{
-            background-color: {BUTTON_PRESSED_COLOR.name()};
-        }}
-        QPushButton:disabled {{
-            background-color: #141B26;
-            color: #5E6B7C;
-            border-color: #1A202B;
-        }}
-
-        QLabel[formLabel="true"] {{
-            color: {MUTED_TEXT_COLOR.name()};
-            font-weight: 600;
-            letter-spacing: 0.4px;
-        }}
-        QLabel[valueLabel="true"] {{
-            color: #F5F7FA;
-            font-weight: 500;
-        }}
-
-        QSplitter::handle {{
-            background-color: #0B1018;
-            margin: 0px;
-        }}
-        QSplitter::handle:horizontal {{
-            width: 2px;
-        }}
-        QSplitter::handle:horizontal:hover {{
-            background-color: {ACCENT_COLOR.name()};
+        QSplitter#MainSplitter::handle:hover {{
+            background-color: {_hex(colors.accent)};
         }}
 
         QScrollBar:vertical {{
-            background: {SCROLLBAR_TRACK_COLOR.name()};
+            background: {_hex(colors.surface)};
             width: 12px;
-            margin: 4px 0 4px 0;
+            margin: 12px 0;
             border-radius: 6px;
         }}
         QScrollBar::handle:vertical {{
-            background: {SCROLLBAR_HANDLE_COLOR.name()};
-            min-height: 24px;
+            background: {_hex(colors.outline_soft)};
             border-radius: 6px;
+            min-height: 32px;
         }}
         QScrollBar::handle:vertical:hover {{
-            background: {SCROLLBAR_HANDLE_HOVER_COLOR.name()};
+            background: {_hex(colors.accent)};
         }}
         QScrollBar::add-line:vertical,
         QScrollBar::sub-line:vertical {{
@@ -190,18 +270,18 @@ def _build_stylesheet() -> str:
         }}
 
         QScrollBar:horizontal {{
-            background: {SCROLLBAR_TRACK_COLOR.name()};
+            background: {_hex(colors.surface)};
             height: 12px;
-            margin: 0 4px 0 4px;
+            margin: 0 12px;
             border-radius: 6px;
         }}
         QScrollBar::handle:horizontal {{
-            background: {SCROLLBAR_HANDLE_COLOR.name()};
-            min-width: 24px;
+            background: {_hex(colors.outline_soft)};
             border-radius: 6px;
+            min-width: 32px;
         }}
         QScrollBar::handle:horizontal:hover {{
-            background: {SCROLLBAR_HANDLE_HOVER_COLOR.name()};
+            background: {_hex(colors.accent)};
         }}
         QScrollBar::add-line:horizontal,
         QScrollBar::sub-line:horizontal {{
@@ -212,11 +292,18 @@ def _build_stylesheet() -> str:
             background: none;
         }}
 
+        QWidget#DetailsPanel {{
+            background-color: transparent;
+        }}
+        QWidget#DetailsPanel QPushButton {{
+            min-height: 36px;
+        }}
+
         QToolTip {{
-            background-color: #1A2130;
-            color: {BASE_TEXT_COLOR.name()};
-            border: 1px solid {ACCENT_COLOR.name()};
-            padding: 6px;
+            background-color: {_hex(colors.surface)};
+            color: {_hex(colors.text_primary)};
+            border: 1px solid {_hex(colors.outline)};
+            padding: 6px 8px;
             border-radius: 6px;
         }}
         """
@@ -224,16 +311,25 @@ def _build_stylesheet() -> str:
 
 
 def apply_premium_theme(app: QApplication) -> None:
-    """Apply a polished dark theme to the Qt application."""
+    """Apply a premium dark theme to the Qt application."""
 
+    colors = PremiumColors()
     app.setStyle("Fusion")
-    app.setPalette(_build_palette())
+    app.setPalette(_build_palette(colors))
 
     base_font: QFont = app.font()
-    if base_font.pointSizeF() <= 0:
-        base_font.setPointSize(10)
+    if hasattr(base_font, "setFamilies"):
+        base_font.setFamilies(["Inter", "Segoe UI", "Roboto", "Helvetica Neue", "Arial"])
     else:
-        base_font.setPointSizeF(max(base_font.pointSizeF(), 10.5))
+        base_font.setFamily("Inter")
+
+    size = base_font.pointSizeF()
+    if size <= 0:
+        base_font.setPointSize(11)
+    else:
+        base_font.setPointSizeF(max(size, 11.0))
+    base_font.setLetterSpacing(QFont.PercentageSpacing, 102.0)
+    base_font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     app.setFont(base_font)
 
-    app.setStyleSheet(_build_stylesheet())
+    app.setStyleSheet(_build_stylesheet(colors))

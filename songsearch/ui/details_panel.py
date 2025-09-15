@@ -13,8 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
-    QSpacerItem,
     QVBoxLayout,
     QWidget,
 )
@@ -59,6 +57,8 @@ class DetailsPanel(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("DetailsPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMinimumWidth(360)
         self._con = con
         self._current_data: dict[str, Any] | None = None
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
@@ -80,19 +80,24 @@ class DetailsPanel(QWidget):
     # ----------------------------------------------------------------------------------
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(18)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
 
         for key, label in self._build_detail_labels():
             form.addRow(label, self._value_labels[key])
 
         layout.addLayout(form)
 
+        layout.addSpacing(12)
+
         actions = QHBoxLayout()
-        actions.setSpacing(6)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(10)
 
         self.btn_open = QPushButton("Abrir…")
         actions.addWidget(self.btn_open)
@@ -107,13 +112,16 @@ class DetailsPanel(QWidget):
         actions.addWidget(self.btn_musicbrainz)
 
         self.btn_enrich = QPushButton("Enriquecer")
+        self.btn_enrich.setProperty("accentButton", True)
         actions.addWidget(self.btn_enrich)
 
         self.btn_spectrum = QPushButton("Espectro")
+        self.btn_spectrum.setProperty("accentButton", True)
         actions.addWidget(self.btn_spectrum)
 
-        actions.addItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        actions.addStretch(1)
         layout.addLayout(actions)
+        layout.addStretch(1)
 
     def _build_detail_labels(self) -> Iterable[tuple[str, QLabel]]:
         """Return an iterable of ``(field, label_widget)`` pairs for the form."""
@@ -139,6 +147,8 @@ class DetailsPanel(QWidget):
             value_label.setObjectName(f"value_{field}")
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             value_label.setProperty("valueLabel", True)
+            value_label.setWordWrap(True)
+            value_label.setMinimumHeight(24)
             self._value_labels[field] = value_label
             label = QLabel(f"{text}:")
             label.setProperty("formLabel", True)

@@ -15,10 +15,14 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
@@ -198,18 +202,69 @@ class MainWindow(QMainWindow):
         central = QWidget(self)
         central.setObjectName("MainContainer")
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
 
+        header = QFrame(central)
+        header.setObjectName("HeaderBar")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(24, 18, 24, 18)
+        header_layout.setSpacing(18)
+
+        title_block = QVBoxLayout()
+        title_block.setSpacing(2)
+        title_label = QLabel("SongSearch Organizer", header)
+        title_label.setObjectName("AppTitle")
+        subtitle_label = QLabel("Gestiona y enriquece tu colección con precisión.", header)
+        subtitle_label.setObjectName("AppSubtitle")
+        title_block.addWidget(title_label)
+        title_block.addWidget(subtitle_label)
+        title_block.addSpacing(6)
+        badge_text = f"Hasta {format(self.MAX_RESULTS, ',d').replace(',', ' ')} resultados"
+        badge_label = QLabel(badge_text, header)
+        badge_label.setObjectName("HeaderBadge")
+        title_block.addWidget(badge_label, alignment=Qt.AlignLeft)
+        title_block.addStretch(1)
+        header_layout.addLayout(title_block, 1)
+
+        search_container = QFrame(header)
+        search_container.setObjectName("SearchContainer")
+        search_container.setMinimumWidth(360)
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(16, 10, 16, 10)
+        search_layout.setSpacing(10)
+
+        search_icon = QLabel("🔍", search_container)
+        search_icon.setObjectName("SearchIcon")
+        search_layout.addWidget(search_icon)
+
+        self._search.setParent(search_container)
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
         self._search.setClearButtonEnabled(True)
         self._search.setObjectName("SearchField")
         self._search.textChanged.connect(self._on_search_text_changed)
-        layout.addWidget(self._search)
+        self._search.returnPressed.connect(self.refresh_results)
+        search_layout.addWidget(self._search, 1)
+
+        search_hint = QLabel("↵ ejecutar", search_container)
+        search_hint.setObjectName("SearchHint")
+        search_layout.addWidget(search_hint)
+
+        header_layout.addWidget(search_container, 0, Qt.AlignVCenter)
+        layout.addWidget(header)
 
         splitter = QSplitter(Qt.Horizontal, central)
-        splitter.setHandleWidth(2)
+        splitter.setObjectName("MainSplitter")
+        splitter.setHandleWidth(1)
         splitter.setChildrenCollapsible(False)
+        splitter.setOpaqueResize(False)
+
+        table_card = QFrame(splitter)
+        table_card.setObjectName("TableCard")
+        table_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        table_layout = QVBoxLayout(table_card)
+        table_layout.setContentsMargins(18, 18, 18, 18)
+        table_layout.setSpacing(0)
 
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -217,22 +272,46 @@ class MainWindow(QMainWindow):
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
+        self._table.setShowGrid(False)
+        self._table.setCornerButtonEnabled(False)
         self._table.setObjectName("TrackTable")
-        self._table.verticalHeader().setDefaultSectionSize(36)
-        self._table.horizontalHeader().setSectionsMovable(True)
-        self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self._table.horizontalHeader().setHighlightSections(False)
+        self._table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self._table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self._table.verticalHeader().setDefaultSectionSize(42)
         self._table.verticalHeader().setVisible(False)
+        header_view = self._table.horizontalHeader()
+        header_view.setSectionsMovable(True)
+        header_view.setStretchLastSection(True)
+        header_view.setSectionResizeMode(QHeaderView.Interactive)
+        header_view.setHighlightSections(False)
+        header_view.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        table_layout.addWidget(self._table)
 
-        splitter.addWidget(self._table)
-        splitter.addWidget(self._details)
+        details_card = QFrame(splitter)
+        details_card.setObjectName("DetailsCard")
+        details_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        details_layout = QVBoxLayout(details_card)
+        details_layout.setContentsMargins(18, 18, 18, 18)
+        details_layout.setSpacing(0)
+        details_layout.addWidget(self._details)
+
+        for card in (table_card, details_card):
+            shadow = QGraphicsDropShadowEffect(card)
+            shadow.setBlurRadius(32)
+            shadow.setOffset(0, 16)
+            shadow.setColor(QColor(5, 7, 15, 140))
+            card.setGraphicsEffect(shadow)
+
+        splitter.addWidget(table_card)
+        splitter.addWidget(details_card)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, 1)
 
         self.setCentralWidget(central)
         self.setStatusBar(self._status)
+        self._status.setObjectName("MainStatusBar")
+        self._status.setSizeGripEnabled(False)
         self._status.showMessage("Listo")
 
         selection_model = self._table.selectionModel()
