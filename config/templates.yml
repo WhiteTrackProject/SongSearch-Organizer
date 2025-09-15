@@ -1,0 +1,12 @@
+default: "{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
+alternativas:
+  - name: "artista-año-album"
+    pattern: "{Artista}/{Año} - {Álbum}/{TrackNo - Título}.{ext}"
+  - name: "año-genero-artista"
+    pattern: "{Año}/{Genero}/{Artista}/{Título}.{ext}"
+reglas:
+  limpiar_nombres: true
+  quitar_parentesis_promos: true
+  reemplazos_caracteres_prohibidos: true
+  usar_albumartist_si_falta_artista: true
+  compilaciones_va: "{Genero}/{Año}/{Álbum}/VA - {TrackNo - Artista - Título}.{ext}"
