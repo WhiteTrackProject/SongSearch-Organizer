@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import sqlite3
 from pathlib import Path
 from typing import Iterable, Dict, Any, Tuple
@@ -58,6 +59,10 @@ MIGRATION_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("cover_art_url", "TEXT"),
 )
 
+
+_FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
@@ -84,6 +89,20 @@ def init_db(db_dir: Path) -> Path:
     _run_schema(con)
     _migrate_columns(con)
     return db_path
+
+
+def fts_query_from_text(text: str) -> str | None:
+    """Return an FTS5 query string that performs prefix matches for *text*.
+
+    The returned query searches across all indexed columns and expands each
+    alphanumeric token into a prefix match by appending ``*``. ``None`` is
+    returned when no meaningful tokens can be extracted.
+    """
+
+    tokens = _FTS_TOKEN_RE.findall(text)
+    if not tokens:
+        return None
+    return " ".join(f"{token}*" for token in tokens)
 
 def upsert_track(con: sqlite3.Connection, data: Dict[str, Any]) -> int:
     cur = con.execute("PRAGMA table_info(tracks)")
@@ -131,9 +150,22 @@ def get_by_path(con: sqlite3.Connection, path: str) -> sqlite3.Row | None:
 
     return con.execute("SELECT * FROM tracks WHERE path=?", (path,)).fetchone()
 
-def query_tracks(con: sqlite3.Connection, where: str = "", params: Iterable[Any] = ()) -> Iterable[sqlite3.Row]:
-    sql = "SELECT * FROM tracks"
+def query_tracks(
+    con: sqlite3.Connection,
+    where: str = "",
+    params: Iterable[Any] = (),
+    fts_query: str | None = None,
+) -> Iterable[sqlite3.Row]:
+    sql = "SELECT tracks.* FROM tracks"
+    sql_params = list(params)
+    conditions = []
+    if fts_query:
+        sql += " JOIN tracks_fts ON tracks.path = tracks_fts.path"
+        conditions.append("tracks_fts MATCH ?")
+        sql_params.insert(0, fts_query)
     if where:
-        sql += " WHERE " + where
+        conditions.append(f"({where})")
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY artist, album, title"
-    return con.execute(sql, tuple(params)).fetchall()
+    return con.execute(sql, tuple(sql_params)).fetchall()

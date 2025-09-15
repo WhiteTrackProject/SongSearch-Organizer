@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from pathlib import Path
 from .. import __version__
-from ..core.db import connect, get_by_path, init_db, query_tracks
+from ..core.db import connect, fts_query_from_text, get_by_path, init_db, query_tracks
 from ..core.scanner import scan_path
 from ..core.cover_art import ensure_cover_for_path
 from ..core.spectrum import open_external
@@ -87,11 +87,13 @@ class MainWindow(QMainWindow):
         t0 = time.perf_counter()
         text = self.search.text().strip()
         if text:
-            where = "(title LIKE ? OR artist LIKE ? OR album LIKE ? OR genre LIKE ? OR path LIKE ?)"
-            params = tuple([f"%{text}%"] * 5)
+            fts_query = fts_query_from_text(text)
+            if fts_query:
+                rows = query_tracks(self.con, fts_query=fts_query)
+            else:
+                rows = []
         else:
-            where, params = "", tuple()
-        rows = query_tracks(self.con, where, params)
+            rows = query_tracks(self.con)
         header = self.table.horizontalHeader()
         sort_section = header.sortIndicatorSection()
         sort_order = header.sortIndicatorOrder()
