@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from typing import Literal
 import os
 import typer
 from rich.table import Table
@@ -37,11 +38,23 @@ def organize(
     template: str = typer.Option("default", "--template"),
     mode: str = typer.Option("simulate", "--mode", help="simulate|move|copy|link"),
     dest: str = typer.Option(..., "--dest", help="Carpeta destino"),
-    export: bool = typer.Option(True, "--export/--no-export", help="Exportar CSV de plan")
+    export: bool = typer.Option(True, "--export/--no-export", help="Exportar CSV de plan"),
+    require_cover: bool = typer.Option(False, "--require-cover/--no-require-cover", help="Solo incluir pistas con cover"),
+    require_year: bool = typer.Option(False, "--require-year/--no-require-year", help="Solo incluir pistas con año"),
+    album_mode: Literal["tags", "mb-release"] = typer.Option("tags", "--album-mode", help="tags|mb-release"),
+    fallback_tags: bool = typer.Option(False, "--fallback-tags/--no-fallback-tags", help="Si falta MB release usa tags"),
 ):
     tpl = _load_template(template)
     con = connect(DB_PATH)
-    plan = simulate(con, Path(dest), tpl)
+    plan = simulate(
+        con,
+        Path(dest),
+        tpl,
+        require_cover=require_cover,
+        require_year=require_year,
+        album_mode=album_mode,
+        fallback_to_tags=fallback_tags,
+    )
     logger.info("%d elementos en el plan (%s).", len(plan), mode)
     if mode == "simulate":
         _print_plan(plan)
