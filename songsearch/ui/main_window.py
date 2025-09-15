@@ -4,7 +4,7 @@ from typing import Iterable, Optional
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem,
-    QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar
+    QHBoxLayout, QPushButton, QFileDialog, QLabel, QProgressBar, QMessageBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 700)
         self.con = connect(DB_PATH)
         self._visible_paths: set[str] = set()
+        self._scan_thread: Optional[ScanThread] = None
 
         self.search = QLineEdit(self)
         self.search.setPlaceholderText("Buscar (título, artista, álbum, género, ruta)…")
@@ -205,15 +206,23 @@ class MainWindow(QMainWindow):
             self.refresh_cover_for_path(path)
 
     def scan_dialog(self):
+        if self._scan_thread is not None and self._scan_thread.isRunning():
+            QMessageBox.warning(
+                self,
+                "Escaneo en progreso",
+                "Ya hay un escaneo en curso. Espera a que termine antes de iniciar otro.",
+            )
+            return
         d = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de música")
         if d:
             self.progress.setVisible(True)
             self.progress.setRange(0,0)
-            self.thread = ScanThread(self.con, d)
-            self.thread.finished.connect(self.on_scan_finished)
-            self.thread.start()
+            self._scan_thread = ScanThread(self.con, d)
+            self._scan_thread.finished.connect(self.on_scan_finished)
+            self._scan_thread.start()
 
     def on_scan_finished(self):
         self.progress.setVisible(False)
+        self._scan_thread = None
         self.refresh()
         logger.info("scan completed")
