@@ -45,7 +45,7 @@ def enrich_file(con, path: Path, min_confidence: float = 0.6, write_tags: bool =
     update_fields(con, str(path), {"fp_status": "pending"})
     best: Optional[Dict[str, Any]] = None
     try:
-        for score, rid, title, artist in _acoustid_match(api_key, path):
+        for score, acoustid_id, rid, title, artist in _acoustid_match(api_key, path):
             rec = musicbrainzngs.get_recording_by_id(rid, includes=["artists","releases","release-groups"])["recording"]
             release, rel_group = _pick_best_release(rec.get("release-list", []))
             if not release:
@@ -66,7 +66,7 @@ def enrich_file(con, path: Path, min_confidence: float = 0.6, write_tags: bool =
             except Exception:
                 pass
             cand = {
-                "acoustid_id": None,
+                "acoustid_id": acoustid_id,
                 "mb_recording_id": rid,
                 "mb_release_id": release["id"],
                 "mb_release_group_id": (rel_group or {}).get("id"),
@@ -146,8 +146,35 @@ def enrich_db(con, limit: int = 100, min_confidence: float = 0.6, write_tags: bo
 
 
 def _acoustid_match(api_key: str, path: Path):
-    for score, rid, title, artist in acoustid.match(api_key, str(path)):
-        yield score, rid, title, artist
+    response = acoustid.match(api_key, str(path), parse=False)
+    status = response.get("status")
+    if status != "ok":
+        raise acoustid.WebServiceError(f"status: {status}")
+    if "results" not in response:
+        raise acoustid.WebServiceError("results not included")
+
+    for result in response.get("results", []):
+        recordings = result.get("recordings") or []
+        if not recordings:
+            continue
+        score = result["score"]
+        acoustid_id = result.get("id")
+        for recording in recordings:
+            artists = recording.get("artists")
+            if artists:
+                parts = []
+                for artist in artists:
+                    name = artist.get("name")
+                    if not name:
+                        continue
+                    parts.append(name + (artist.get("joinphrase") or ""))
+                artist_name = "".join(parts) if parts else None
+            else:
+                artist_name = None
+            recording_id = recording.get("id")
+            if not recording_id:
+                continue
+            yield score, acoustid_id, recording_id, recording.get("title"), artist_name
 
 
 def _join_artist_credit(credit_list) -> Optional[str]:
