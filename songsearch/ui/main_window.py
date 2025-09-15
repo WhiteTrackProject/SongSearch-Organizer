@@ -40,19 +40,25 @@ TOOLTIP_PREVIEW_SIZE = 256
 class ScanThread(QThread):
     finished = Signal()
 
-    def __init__(self, con, path):
+    def __init__(self, db_path: Path, path: str):
         super().__init__()
-        self.con = con
+        self.db_path = Path(db_path)
         self.path = path
 
     def run(self):
+        con = None
         try:
+            con = connect(self.db_path)
             scan_path(
-                self.con,
+                con,
                 Path(self.path),
                 should_interrupt=self.isInterruptionRequested,
             )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Error while scanning %s", self.path)
         finally:
+            if con is not None:
+                con.close()
             self.finished.emit()
 
 
@@ -244,7 +250,7 @@ class MainWindow(QMainWindow):
         if d:
             self.progress.setVisible(True)
             self.progress.setRange(0, 0)
-            self._scan_thread = ScanThread(self.con, d)
+            self._scan_thread = ScanThread(DB_PATH, d)
             self._scan_thread.finished.connect(self.on_scan_finished)
             self._scan_thread.start()
 
