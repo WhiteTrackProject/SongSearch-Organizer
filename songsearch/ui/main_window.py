@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QThread, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -47,7 +47,11 @@ class ScanThread(QThread):
 
     def run(self):
         try:
-            scan_path(self.con, Path(self.path))
+            scan_path(
+                self.con,
+                Path(self.path),
+                should_interrupt=self.isInterruptionRequested,
+            )
         finally:
             self.finished.emit()
 
@@ -249,3 +253,13 @@ class MainWindow(QMainWindow):
         self._scan_thread = None
         self.refresh()
         logger.info("scan completed")
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - GUI specific
+        thread = self._scan_thread
+        if thread is not None and thread.isRunning():
+            thread.requestInterruption()
+            thread.wait()
+            thread.deleteLater()
+            self._scan_thread = None
+            self.progress.setVisible(False)
+        super().closeEvent(event)
