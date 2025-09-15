@@ -58,6 +58,7 @@ class DetailsPanel(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("DetailsPanel")
         self._con = con
         self._current_data: dict[str, Any] | None = None
         self._data_dir = (data_dir or Path.home() / ".songsearch").expanduser()
@@ -137,8 +138,11 @@ class DetailsPanel(QWidget):
             value_label = QLabel()
             value_label.setObjectName(f"value_{field}")
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setProperty("valueLabel", True)
             self._value_labels[field] = value_label
-            yield field, QLabel(f"{text}:")
+            label = QLabel(f"{text}:")
+            label.setProperty("formLabel", True)
+            yield field, label
 
     # ----------------------------------------------------------------------------------
     # State management

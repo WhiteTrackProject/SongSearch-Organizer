@@ -196,15 +196,19 @@ class MainWindow(QMainWindow):
         self.resize(1280, 720)
 
         central = QWidget(self)
+        central.setObjectName("MainContainer")
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
 
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
+        self._search.setClearButtonEnabled(True)
+        self._search.setObjectName("SearchField")
         self._search.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search)
 
         splitter = QSplitter(Qt.Horizontal, central)
+        splitter.setHandleWidth(2)
         splitter.setChildrenCollapsible(False)
 
         self._table.setModel(self._model)
@@ -213,9 +217,12 @@ class MainWindow(QMainWindow):
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
+        self._table.setObjectName("TrackTable")
+        self._table.verticalHeader().setDefaultSectionSize(36)
         self._table.horizontalHeader().setSectionsMovable(True)
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self._table.horizontalHeader().setHighlightSections(False)
         self._table.verticalHeader().setVisible(False)
 
         splitter.addWidget(self._table)
