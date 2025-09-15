@@ -156,6 +156,25 @@ reglas:
 
 ---
 
+## 🧑‍🏫 Lanzamiento de la app para principiantes
+
+¿Nunca has lanzado una app de Python? Sigue estos pasos sencillos:
+
+1. **Instala Python 3.13** desde [python.org](https://www.python.org/downloads/) y, durante la instalación en Windows, marca "Add Python to PATH".
+2. **Descarga el proyecto**: `git clone https://github.com/tu-usuario/SongSearch-Organizer.git` o baja el ZIP y descomprímelo.
+3. **Abre una terminal** (Terminal en macOS/Linux o PowerShell en Windows) y ve a la carpeta del proyecto: `cd SongSearch-Organizer`.
+4. **Crea un entorno aislado**: `python -m venv .venv`.
+5. **Activa el entorno**:
+   - macOS/Linux: `source .venv/bin/activate`
+   - Windows: `.venv\Scripts\activate`
+6. **Instala la app** dentro del entorno: `pip install .` (o `pip install -r requirements.lock` si quieres replicar el entorno del CI).
+7. **Lanza la interfaz gráfica**: `python -m songsearch.app`.
+8. **En los próximos usos**, solo repite los pasos 3, 5 y 7 para abrir la app de nuevo.
+
+> Consejos rápidos: Si prefieres la interfaz de línea de comandos, ejecuta `python -m songsearch.cli --help`. Para salir del entorno virtual, usa `deactivate`.
+
+---
+
 ## 🚀 Uso (desarrollo)
 
 1. **Escanear** carpeta y poblar DB:
@@ -267,4 +286,4 @@ fpcalc -version
 
 ## 📜 Licencia
 
-Este proyecto se distribuye bajo la licencia [MIT](LICENSE).
+Este proyecto se distribuye bajo la licencia [MIT (2025)](LICENSE).
