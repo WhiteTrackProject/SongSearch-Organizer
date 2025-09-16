@@ -47,12 +47,14 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
     QMenuBar,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QStatusBar,
@@ -64,6 +66,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
+from ..core.organizer import apply_plan, simulate
 from ..core.scanner import scan_path
 from ..core.spectrum import open_external
 from .details_panel import DetailsPanel
@@ -526,6 +529,8 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar(self)
 
         self._btn_scan: QPushButton | None = None
+        self._btn_simulate: QPushButton | None = None
+        self._btn_apply_plan: QPushButton | None = None
         self._btn_enrich: QPushButton | None = None
         self._btn_spectrum: QPushButton | None = None
         self._btn_config: QPushButton | None = None
@@ -550,6 +555,8 @@ class MainWindow(QMainWindow):
         self._action_focus_search: QAction | None = None
         self._action_clear_search: QAction | None = None
         self._action_select_all: QAction | None = None
+        self._action_simulate: QAction | None = None
+        self._action_apply_plan: QAction | None = None
         self._action_enrich: QAction | None = None
         self._action_spectrum: QAction | None = None
         self._action_help_overview: QAction | None = None
@@ -566,6 +573,13 @@ class MainWindow(QMainWindow):
         self._action_copy_default_tip = (
             "Copiar al portapapeles la ruta de las pistas seleccionadas."
         )
+        self._organizer_plan: list[tuple[str, str]] = []
+        self._organizer_plan_dest: Path | None = None
+        self._organizer_plan_template: str | None = None
+        self._organizer_last_mode: str = "move"
+        self._last_dest_folder: Path | None = None
+        self._templates_cache: dict[str, str] | None = None
+        self._undo_log_path = self._data_dir / "logs" / "last_ops.json"
 
         self._build_ui()
         self._create_actions()
@@ -1217,6 +1231,21 @@ class MainWindow(QMainWindow):
         self._btn_scan.clicked.connect(self._open_scan_dialog)
         actions_layout.addWidget(self._btn_scan)
 
+        self._btn_simulate = QPushButton(
+            _load_icon("simulate.png"), "Simular biblioteca", actions_container
+        )
+        self._btn_simulate.setProperty("toolbarButton", True)
+        self._btn_simulate.clicked.connect(self._simulate_library)
+        actions_layout.addWidget(self._btn_simulate)
+
+        self._btn_apply_plan = QPushButton(
+            _load_icon("apply.png"), "Mover/ Copiar archivos", actions_container
+        )
+        self._btn_apply_plan.setProperty("toolbarButton", True)
+        self._btn_apply_plan.clicked.connect(self._apply_organizer_plan)
+        self._btn_apply_plan.setEnabled(False)
+        actions_layout.addWidget(self._btn_apply_plan)
+
         self._btn_enrich = QPushButton(_load_icon("enrich.png"), "Enriquecer", actions_container)
         self._btn_enrich.setProperty("toolbarButton", True)
         self._btn_enrich.clicked.connect(self._enrich_selected)
@@ -1234,6 +1263,8 @@ class MainWindow(QMainWindow):
         for button in (
             self._btn_config,
             self._btn_scan,
+            self._btn_simulate,
+            self._btn_apply_plan,
             self._btn_enrich,
             self._btn_spectrum,
             self._help_button,
@@ -1359,6 +1390,19 @@ class MainWindow(QMainWindow):
         self._action_scan.setStatusTip("Explora una carpeta y añade sus pistas a la biblioteca.")
         self._action_scan.triggered.connect(self._open_scan_dialog)
 
+        self._action_simulate = QAction(_load_icon("simulate.png"), "Simular biblioteca…", self)
+        self._action_simulate.setShortcut(QKeySequence("Ctrl+Shift+O"))
+        self._action_simulate.setStatusTip("Genera un plan de organización sin aplicar cambios.")
+        self._action_simulate.triggered.connect(self._simulate_library)
+
+        self._action_apply_plan = QAction(
+            _load_icon("apply.png"), "Mover/ Copiar archivos…", self
+        )
+        self._action_apply_plan.setStatusTip(
+            "Aplica el último plan de organización generado."
+        )
+        self._action_apply_plan.triggered.connect(self._apply_organizer_plan)
+
         self._action_open_track = QAction(_load_icon("open.png"), "Abrir", self)
         self._action_open_track.setShortcut(QKeySequence(QKeySequence.StandardKey.Open))
         self._action_open_track.setStatusTip(
@@ -1426,6 +1470,8 @@ class MainWindow(QMainWindow):
         for action in (
             self._action_configure_api,
             self._action_scan,
+            self._action_simulate,
+            self._action_apply_plan,
             self._action_open_track,
             self._action_reveal_track,
             self._action_exit,
@@ -1434,6 +1480,8 @@ class MainWindow(QMainWindow):
             self._action_clear_search,
             self._action_select_all,
             self._action_refresh,
+            self._action_simulate,
+            self._action_apply_plan,
             self._action_enrich,
             self._action_spectrum,
             self._action_help_overview,
@@ -1468,6 +1516,7 @@ class MainWindow(QMainWindow):
         add_group(edit_menu, self._action_select_all)
 
         tools_menu = menu_bar.addMenu("&Herramientas")
+        add_group(tools_menu, self._action_simulate, self._action_apply_plan)
         add_group(tools_menu, self._action_refresh)
         add_group(tools_menu, self._action_enrich, self._action_spectrum)
 
@@ -1546,6 +1595,264 @@ class MainWindow(QMainWindow):
         message = str(error) if error else "No se pudo completar el escaneo."
         QMessageBox.critical(self, "Error al escanear", message)
         self._status.showMessage("Error durante el escaneo", 5000)
+
+    def _simulate_library(self) -> None:  # pragma: no cover - UI callback
+        if self._con is None:
+            QMessageBox.warning(
+                self,
+                "Base de datos no disponible",
+                "No hay conexión a la base de datos para generar el plan.",
+            )
+            self._status.showMessage("Conecta una base de datos antes de simular.", 5000)
+            return
+
+        params = self._prompt_simulation_parameters()
+        if params is None:
+            return
+        dest, template_name, template_pattern = params
+
+        self._status.showMessage("Generando plan de organización…")
+        try:
+            plan = list(simulate(self._con, dest, template_pattern))
+        except Exception as exc:  # noqa: BLE001 - mostrar fallo al usuario
+            logger.exception("Organizer simulation failed: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Error al simular",
+                f"No se pudo generar el plan de organización.\n\n{exc}",
+            )
+            self._status.showMessage("Error al simular la biblioteca.", 8000)
+            return
+
+        self._organizer_plan = plan
+        self._organizer_plan_dest = dest
+        self._organizer_plan_template = template_name
+        logger.info(
+            "Organizer plan generated with %d elements (dest=%s, template=%s)",
+            len(plan),
+            dest,
+            template_name,
+        )
+        if plan:
+            message = f"Simulación lista: {len(plan)} elementos hacia {dest}."
+        else:
+            message = f"Simulación lista: sin elementos para {dest}."
+        self._status.showMessage(message, 8000)
+        self._update_action_state()
+        self._show_plan_preview(
+            plan,
+            dest=dest,
+            template_name=template_name,
+            template_pattern=template_pattern,
+        )
+
+    def _prompt_simulation_parameters(self) -> tuple[Path, str, str] | None:
+        base_dir = self._last_dest_folder or self._data_dir
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Selecciona la carpeta destino",
+            str(base_dir),
+        )
+        if not directory:
+            return None
+        dest_path = Path(directory)
+        self._last_dest_folder = dest_path
+        selection = self._prompt_template_selection()
+        if selection is None:
+            return None
+        template_name, template_pattern = selection
+        return dest_path, template_name, template_pattern
+
+    def _prompt_template_selection(self) -> tuple[str, str] | None:
+        templates = self._load_templates_catalog()
+        if not templates:
+            return None
+        names = list(templates.keys())
+        default_name = self._organizer_plan_template or "default"
+        if default_name not in names:
+            default_name = names[0]
+        index = names.index(default_name)
+        selection, accepted = QInputDialog.getItem(
+            self,
+            "Selecciona plantilla",
+            "Elige la plantilla de organización:",
+            names,
+            index,
+            False,
+        )
+        if not accepted:
+            return None
+        name = str(selection)
+        pattern = templates.get(name)
+        if pattern is None and names:
+            pattern = templates[names[0]]
+            name = names[0]
+        if pattern is None:
+            return None
+        return name, pattern
+
+    def _load_templates_catalog(self) -> dict[str, str]:
+        if self._templates_cache is not None:
+            return dict(self._templates_cache)
+
+        default_pattern = "{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
+        templates: dict[str, str] = {"default": default_pattern}
+        cfg_path = Path(__file__).resolve().parents[2] / "config" / "templates.yml"
+        try:
+            import yaml
+        except Exception as exc:  # pragma: no cover - dependencia opcional
+            logger.exception("PyYAML no disponible: %s", exc)
+            self._templates_cache = templates
+            return dict(self._templates_cache)
+
+        try:
+            data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            logger.warning("Archivo de plantillas no encontrado: %s", cfg_path)
+        except Exception as exc:  # noqa: BLE001 - informar al usuario
+            logger.exception("No se pudo leer templates.yml: %s", exc)
+            QMessageBox.warning(
+                self,
+                "Plantillas no disponibles",
+                "No se pudo leer el archivo de plantillas. Se usará la plantilla por defecto.",
+            )
+        else:
+            if isinstance(data, Mapping):
+                default_value = data.get("default")
+                if isinstance(default_value, str) and default_value.strip():
+                    templates["default"] = default_value
+                alternatives = data.get("alternativas")
+                if isinstance(alternatives, Iterable) and not isinstance(
+                    alternatives, (str, bytes)
+                ):
+                    for alt in alternatives:
+                        if (
+                            isinstance(alt, Mapping)
+                            and isinstance(alt.get("name"), str)
+                            and isinstance(alt.get("pattern"), str)
+                        ):
+                            templates[alt["name"]] = alt["pattern"]
+
+        self._templates_cache = templates
+        return dict(self._templates_cache)
+
+    def _show_plan_preview(
+        self,
+        plan: Sequence[tuple[str, str]],
+        *,
+        dest: Path,
+        template_name: str,
+        template_pattern: str,
+    ) -> None:  # pragma: no cover - muestra un diálogo modal
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Vista previa de organización")
+        layout = QVBoxLayout(dialog)
+
+        summary = QLabel(dialog)
+        summary.setTextFormat(Qt.PlainText)
+        summary.setWordWrap(True)
+        summary_lines = [
+            f"Destino: {dest}",
+            f"Plantilla: {template_name}",
+        ]
+        if template_pattern and template_pattern != template_name:
+            summary_lines.append(f"Patrón: {template_pattern}")
+        summary_lines.append(f"Elementos en el plan: {len(plan)}")
+        summary.setText("\n".join(summary_lines))
+        layout.addWidget(summary)
+
+        preview = QPlainTextEdit(dialog)
+        preview.setReadOnly(True)
+        preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        max_preview = 200
+        lines = [f"{src} → {dst}" for src, dst in list(plan)[:max_preview]]
+        if not lines:
+            lines = ["(sin elementos en el plan)"]
+        elif len(plan) > max_preview:
+            remaining = len(plan) - max_preview
+            lines.append(f"… y {remaining} elementos adicionales.")
+        preview.setPlainText("\n".join(lines))
+        preview.setMinimumSize(720, 360)
+        layout.addWidget(preview)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok, dialog)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
+
+    def _prompt_apply_mode(self) -> tuple[str, str] | None:
+        options = [
+            ("Mover archivos", "move"),
+            ("Copiar archivos", "copy"),
+            ("Crear enlaces", "link"),
+        ]
+        labels = [label for label, _ in options]
+        default_mode = self._organizer_last_mode or "move"
+        default_index = next(
+            (i for i, (_, mode) in enumerate(options) if mode == default_mode),
+            0,
+        )
+        selection, accepted = QInputDialog.getItem(
+            self,
+            "Aplicar plan",
+            "Selecciona cómo aplicar el plan:",
+            labels,
+            default_index,
+            False,
+        )
+        if not accepted:
+            return None
+        label = str(selection)
+        for option_label, mode in options:
+            if option_label == label:
+                self._organizer_last_mode = mode
+                return mode, option_label
+        self._organizer_last_mode = options[0][1]
+        return options[0][1], options[0][0]
+
+    def _apply_organizer_plan(self) -> None:  # pragma: no cover - UI callback
+        if not self._organizer_plan:
+            QMessageBox.information(
+                self,
+                "Plan no disponible",
+                "Genera primero un plan con «Simular biblioteca».",
+            )
+            return
+
+        mode_selection = self._prompt_apply_mode()
+        if mode_selection is None:
+            return
+        mode, mode_label = mode_selection
+
+        if self._con is None:
+            QMessageBox.warning(
+                self,
+                "Base de datos no disponible",
+                "No hay conexión a la base de datos para aplicar el plan.",
+            )
+            self._status.showMessage("No hay conexión a la base de datos.", 5000)
+            return
+
+        try:
+            undo_log = apply_plan(self._organizer_plan, mode, self._undo_log_path, con=self._con)
+        except Exception as exc:  # noqa: BLE001 - mostrar el error al usuario
+            logger.exception("Organizer apply failed: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Error al aplicar plan",
+                f"No se pudo completar la operación.\n\n{exc}",
+            )
+            self._status.showMessage("Error al aplicar el plan de organización.", 8000)
+            return
+
+        logger.info("Organizer plan applied using mode %s. Undo log: %s", mode, undo_log)
+        undo_str = str(undo_log)
+        self._status.showMessage(f"{mode_label} completado. Undo: {undo_str}", 8000)
+        self._organizer_plan = []
+        self._organizer_plan_dest = None
+        self._update_action_state()
+        self.refresh_results()
 
     def _show_table_context_menu(self, pos: QPoint) -> None:  # pragma: no cover - UI callback
         index = self._table.indexAt(pos)
@@ -1849,12 +2156,41 @@ class MainWindow(QMainWindow):
         has_selection = bool(self._current_path)
         has_rows = self._model.rowCount() > 0 if self._model is not None else False
         search_has_text = bool(self._search.text())
+        has_plan = bool(self._organizer_plan)
         enable_enrich = has_selection and self._can_enrich_metadata
         enrich_hint = (
             self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
         )
         enable_spectrum = has_selection and self._can_generate_spectrum
         spectrum_hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
+        simulate_available = self._con is not None
+        plan_hint = "Genera un plan con «Simular biblioteca» para habilitar esta acción."
+
+        if self._btn_simulate is not None:
+            self._btn_simulate.setEnabled(simulate_available)
+            self._btn_simulate.setToolTip(
+                "" if simulate_available else "Conecta una base de datos para simular la biblioteca."
+            )
+        if self._action_simulate is not None:
+            self._action_simulate.setEnabled(simulate_available)
+            simulate_tip = (
+                "Genera un plan de organización sin aplicar cambios."
+                if simulate_available
+                else "Conecta una base de datos para simular la biblioteca."
+            )
+            self._action_simulate.setStatusTip(simulate_tip)
+
+        if self._btn_apply_plan is not None:
+            self._btn_apply_plan.setEnabled(has_plan)
+            self._btn_apply_plan.setToolTip("" if has_plan else plan_hint)
+        if self._action_apply_plan is not None:
+            self._action_apply_plan.setEnabled(has_plan)
+            apply_tip = (
+                "Aplica el último plan de organización generado."
+                if has_plan
+                else plan_hint
+            )
+            self._action_apply_plan.setStatusTip(apply_tip)
 
         if self._btn_enrich is not None:
             self._btn_enrich.setEnabled(enable_enrich)
