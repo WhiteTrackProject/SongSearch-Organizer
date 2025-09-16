@@ -70,6 +70,10 @@ class DetailsPanel(QWidget):
         self._enrich_write_tags = False
 
         self._value_labels: dict[str, QLabel] = {}
+        self._can_enrich_metadata = True
+        self._can_generate_spectrum = True
+        self._enrich_disabled_reason: str | None = None
+        self._spectrum_disabled_reason: str | None = None
 
         self._setup_ui()
         self._connect_action_signals()
@@ -264,12 +268,57 @@ class DetailsPanel(QWidget):
 
     def _toggle_action_buttons(self, enabled: bool) -> None:
         for button in self._iter_action_buttons():
-            button.setEnabled(enabled)
+            self._apply_capability_to_button(button, enabled)
+        self._update_action_tooltips()
 
     def _iter_action_buttons(self) -> Iterable[QPushButton]:
         for name, value in self.__dict__.items():
             if name.startswith("btn_") and isinstance(value, QPushButton):
                 yield value
+
+    def _apply_capability_to_button(self, button: QPushButton, enabled: bool) -> None:
+        allow = enabled
+        if button is self.btn_enrich and not self._can_enrich_metadata:
+            allow = False
+        if button is self.btn_spectrum and not self._can_generate_spectrum:
+            allow = False
+        button.setEnabled(allow)
+
+    def _update_action_tooltips(self) -> None:
+        if hasattr(self, "btn_enrich") and isinstance(self.btn_enrich, QPushButton):
+            if self._can_enrich_metadata:
+                self.btn_enrich.setToolTip("")
+            else:
+                hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
+                self.btn_enrich.setToolTip(hint)
+        if hasattr(self, "btn_spectrum") and isinstance(self.btn_spectrum, QPushButton):
+            if self._can_generate_spectrum:
+                self.btn_spectrum.setToolTip("")
+            else:
+                hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
+                self.btn_spectrum.setToolTip(hint)
+
+    def update_capabilities(
+        self,
+        *,
+        can_enrich: bool,
+        can_generate_spectrum: bool,
+        enrich_reason: str | None = None,
+        spectrum_reason: str | None = None,
+    ) -> None:
+        """Update the availability of enrichment/spectrum actions.
+
+        ``enrich_reason`` and ``spectrum_reason`` provide human readable
+        explanations that will be surfaced to the user when the actions are not
+        available.
+        """
+
+        self._can_enrich_metadata = can_enrich
+        self._can_generate_spectrum = can_generate_spectrum
+        self._enrich_disabled_reason = enrich_reason
+        self._spectrum_disabled_reason = spectrum_reason
+        current_has_data = self._current_data is not None
+        self._toggle_action_buttons(current_has_data)
 
     # ----------------------------------------------------------------------------------
     # UI actions
@@ -297,7 +346,8 @@ class DetailsPanel(QWidget):
             if idle_text is not None:
                 button.setText(idle_text)
             button.setProperty("_idle_text", None)
-            button.setEnabled(True)
+            self._apply_capability_to_button(button, self._current_data is not None)
+            self._update_action_tooltips()
 
     def _current_track_path(self) -> Path | None:
         data = self._current_data
@@ -309,6 +359,14 @@ class DetailsPanel(QWidget):
         return Path(path)
 
     def _make_spectrum(self) -> None:
+        if not self._can_generate_spectrum:
+            QMessageBox.warning(
+                self,
+                "ffmpeg no disponible",
+                self._spectrum_disabled_reason
+                or "Instala ffmpeg y verifica que esté en tu PATH para generar espectrogramas.",
+            )
+            return
         path = self._current_track_path()
         if path is None:
             QMessageBox.warning(
@@ -373,6 +431,14 @@ class DetailsPanel(QWidget):
         )
 
     def _enrich_one(self) -> None:
+        if not self._can_enrich_metadata:
+            QMessageBox.warning(
+                self,
+                "APIs no configuradas",
+                self._enrich_disabled_reason
+                or "Configura las credenciales y Chromaprint para habilitar el enriquecimiento.",
+            )
+            return
         if self._enrich_thread is not None and self._enrich_thread.isRunning():
             return
 
@@ -451,15 +517,12 @@ class DetailsPanel(QWidget):
         if job == "spectrum":
             button = self.btn_spectrum
             self._set_button_busy(button, False)
-            if button is not None:
-                button.setEnabled(self._current_data is not None)
             self._spectrum_thread = None
         elif job == "enrich":
             button = self.btn_enrich
             self._set_button_busy(button, False)
-            if button is not None:
-                button.setEnabled(self._current_data is not None)
             self._enrich_thread = None
+        self._toggle_action_buttons(self._current_data is not None)
 
     def _resolve_db_path(self, con: sqlite3.Connection | None) -> Path | None:
         if con is None:
