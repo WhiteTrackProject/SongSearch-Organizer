@@ -38,7 +38,7 @@ def simulate(
         if album_mode == "mb-release" and not mb_release_id:
             if not fallback_to_tags:
                 continue
-            track_template = "{Artista}/{Álbum}/{TrackNo - Título}.{ext}"
+            track_template = "{Artista}/{Álbum}/{TrackNo} - {Título}.{ext}"
 
         meta = {
             "Genero": r["genre"] or "_",
