@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from rich.logging import RichHandler
 from rich.table import Table
 
+from ..ai_assistant import ask_chat
 from ..core.db import connect, init_db
 from ..core.duplicates import find_duplicates, resolve_move_others
 from ..core.metadata_enricher import enrich_db
@@ -127,6 +128,16 @@ def enrich(
             f"{r.get('mb_confidence', 0):.2f}",
         )
     logger.info(table)
+
+
+@app.command()
+def chat(prompt: str = typer.Argument(..., help="Pregunta para la ayuda inteligente.")) -> None:
+    try:
+        answer = ask_chat(prompt)
+    except RuntimeError as exc:  # pragma: no cover - CLI error path
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(answer)
 
 
 @app.command()
