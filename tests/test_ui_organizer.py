@@ -4,6 +4,12 @@ import os
 
 import pytest
 
+pytest.importorskip(
+    "PySide6.QtGui",
+    reason="Qt runtime with libEGL is required for UI tests",
+    exc_type=ImportError,
+)
+
 import songsearch.ui.main_window as ui_main_window
 from songsearch.core.db import connect, init_db
 from songsearch.ui.main_window import MainWindow
@@ -13,7 +19,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 @pytest.fixture(scope="session")
 def qapp():
-    from PySide6.QtWidgets import QApplication
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError as exc:
+        raise pytest.SkipTest(
+            "Qt runtime with libEGL is required for UI tests"
+        ) from exc
 
     app = QApplication.instance()
     if app is None:
