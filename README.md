@@ -15,6 +15,10 @@ pipx install songsearch-organizer
 songsearch --help
 ```
 
+> ℹ️ SongSearch Organizer requiere **Python 3.12** (`>=3.12,<3.13`). Si utilizas un intérprete sin el
+> módulo estándar `aifc`, la app avisará y omitirá los archivos `.aif/.aiff`, manteniendo el
+> procesamiento de los demás formatos compatibles.
+
 Para desarrollo o contribución:
 
 ```bash
@@ -64,7 +68,7 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entr
 
 ## 🧱 Stack
 
-- **Python 3.13.7**
+- **Python 3.12.x** (`>=3.12,<3.13`)
 - **SQLite + FTS5** (búsqueda full-text rápida)
 - **mutagen** (tags), **watchdog** (cambios en disco)
 - **pyacoustid** + `fpcalc` (Chromaprint)
@@ -78,15 +82,15 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entr
 
 1) Instala dependencias nativas:
 ```bash
-brew install python@3.13 ffmpeg chromaprint sqlite
+brew install python@3.12 ffmpeg chromaprint sqlite
 ```
 
 2) Crea entorno virtual + activa:
 
 ```bash
-python3.13 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
-python --version   # debe mostrar 3.13.7
+python --version   # debe mostrar 3.12.x
 ```
 
 3) Instala dependencias Python:
@@ -201,7 +205,7 @@ reglas:
 
 ¿Nunca has lanzado una app de Python? Sigue estos pasos sencillos:
 
-1. **Instala Python 3.13** desde [python.org](https://www.python.org/downloads/) y, durante la instalación en Windows, marca "Add Python to PATH".
+1. **Instala Python 3.12** desde [python.org](https://www.python.org/downloads/) y, durante la instalación en Windows, marca "Add Python to PATH".
 2. **Descarga el proyecto**: `git clone https://github.com/tu-usuario/SongSearch-Organizer.git` o baja el ZIP y descomprímelo.
 3. **Abre una terminal** (Terminal en macOS/Linux o PowerShell en Windows) y ve a la carpeta del proyecto: `cd SongSearch-Organizer`.
 4. **Crea un entorno aislado**: `python -m venv .venv`.

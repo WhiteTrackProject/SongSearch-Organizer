@@ -4,8 +4,23 @@ import logging
 import os
 import threading
 import time
+import warnings
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    try:  # pragma: no cover - exercised implicitly when available
+        import aifc  # noqa: F401
+    except ModuleNotFoundError:  # pragma: no cover - depends on interpreter
+        _AIFC_AVAILABLE = False
+        logger.warning(
+            "Skipping AIFF metadata enrichment because the standard 'aifc' module is not available."
+        )
+    else:
+        _AIFC_AVAILABLE = True
 
 import acoustid
 import musicbrainzngs
@@ -18,7 +33,7 @@ from .db import (
     upsert_fingerprint_cache,
 )
 
-logger = logging.getLogger(__name__)
+_AIFF_SUFFIXES = {".aif", ".aiff"}
 
 
 def _init_musicbrainz():
@@ -62,6 +77,14 @@ def enrich_file(
     file_size = (
         int(track_row["file_size"]) if track_row and track_row["file_size"] is not None else None
     )
+
+    if not _AIFC_AVAILABLE and path.suffix.lower() in _AIFF_SUFFIXES:
+        logger.warning(
+            "Skipping AIFF file %s because the Python 'aifc' module is not available.",
+            path,
+        )
+        update_fields(con, str(path), {"fp_status": "skipped"})
+        return None
 
     cached = get_fingerprint_cache(con, str(path), mtime, file_size)
     if cached and cached.get("mb_confidence") is not None:
