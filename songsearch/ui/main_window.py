@@ -1413,7 +1413,7 @@ class MainWindow(QMainWindow):
         self._action_help_overview = QAction(_load_icon("help.png"), "Centro de ayuda", self)
         self._action_help_overview.setShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents))
         self._action_help_overview.setStatusTip("Descubre atajos, dependencias y consejos de uso.")
-        self._action_help_overview.setMenuRole(QAction.MenuRole.HelpRole)
+        self._action_help_overview.setMenuRole(QAction.MenuRole.ApplicationSpecificRole)
         self._action_help_overview.triggered.connect(self._open_help_center)
 
         self._action_about = QAction("Acerca de SongSearch Organizer", self)
