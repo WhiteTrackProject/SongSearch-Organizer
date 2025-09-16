@@ -2,12 +2,11 @@
 
 Todas las novedades relevantes se documentan en este archivo siguiendo un formato inspirado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
-## [0.3.4] - 2025-11-03
+## [0.3.3] - 2025-09-16
 ### Corregido
 - Plantilla de organización de respaldo en `songsearch/core/organizer.py` para restaurar rutas por defecto sin inconsistencias.
 - Mensajes de advertencia ajustados para reflejar correctamente los fallos de respaldo y sus pasos de mitigación.
 
-## [0.3.3] - 2025-10-31
 ### Añadido
 - Módulo `songsearch.ai` con integración del asistente inteligente en la base de código.
 - Comandos `chat` y `assistant` en la CLI para conversaciones guiadas y respuestas contextuales.
@@ -18,7 +17,7 @@ Todas las novedades relevantes se documentan en este archivo siguiendo un format
 - Manejo centralizado de credenciales, incluyendo la detección y carga de claves para servicios externos.
 - Advertencias de la aplicación actualizadas para guiar la configuración de claves y el uso seguro del asistente.
 
-## [0.3.2] - 2025-09-30
+## [0.3.2] - 2025-09-15
 ### Añadido
 - Interfaz principal rediseñada con cabecera estilo macOS, tarjeta de herramientas y distintivo dinámico de resultados.
 - Centro de ayuda contextual que muestra atajos clave y el estado actual de dependencias/API.
@@ -31,7 +30,7 @@ Todas las novedades relevantes se documentan en este archivo siguiendo un format
 ### Corregido
 - El botón «MusicBrainz» abre ahora la ficha correspondiente en el navegador predeterminado.
 
-## [0.3.1] - 2025-09-15
+## [0.3.1] - 2025-09-14
 ### Añadido
 - Botonera superior con acciones de **Escanear**, **Enriquecer** y **Espectro**, incluyendo soporte para iconos opcionales en `assets/icons/`.
 - Menú contextual en la tabla de Biblioteca con accesos directos para **Abrir**, **Mostrar en carpeta**, **Espectro**, **Enriquecer** y **Copiar ruta**.
