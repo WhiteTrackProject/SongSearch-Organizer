@@ -116,6 +116,12 @@ def enrich_file(
             }
             if best is None or cand["mb_confidence"] > best["mb_confidence"]:
                 best = cand
+    except ModuleNotFoundError as exc:
+        update_fields(con, str(path), {"fp_status": "skipped"})
+        logger.warning(
+            "AIFF support requires Python <3.13; skipping file %s (%s)", path, exc
+        )
+        return None
     except Exception as e:
         update_fields(con, str(path), {"fp_status": "error"})
         logger.error("enrich error %s: %s", path, e)
