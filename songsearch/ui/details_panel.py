@@ -373,7 +373,10 @@ class DetailsPanel(QWidget):
             if self._can_enrich_metadata:
                 self.btn_enrich.setToolTip("")
             else:
-                hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
+                hint = (
+                    self._enrich_disabled_reason
+                    or "Configura las APIs para habilitar el enriquecimiento."
+                )
                 self.btn_enrich.setToolTip(hint)
         if hasattr(self, "btn_spectrum") and isinstance(self.btn_spectrum, QPushButton):
             if self._can_generate_spectrum:
