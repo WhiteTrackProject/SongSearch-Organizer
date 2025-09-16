@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+import importlib
 import logging
 import os
 import shutil
@@ -7,10 +9,11 @@ import sqlite3
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
 from PySide6.QtCore import (
     QAbstractTableModel,
     QItemSelection,
@@ -44,11 +47,10 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStatusBar,
     QTableView,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
-
-from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
 
 from .. import __version__
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
@@ -100,6 +102,186 @@ class _ScanWorker(QThread):
             self.failed.emit(exc)
         else:
             self.finished.emit(self._target)
+
+
+class _HelpWorker(QThread):
+    """Execute help-center requests without blocking the UI thread."""
+
+    result_ready = Signal(str, str)
+    failed = Signal(str, str)
+
+    def __init__(
+        self,
+        *,
+        func: Callable[..., Any],
+        args: Sequence[Any] | None = None,
+        kwargs: Mapping[str, Any] | None = None,
+        task: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._func = func
+        self._args = tuple(args or ())
+        self._kwargs = dict(kwargs or {})
+        self._task = task
+
+    def run(self) -> None:  # pragma: no cover - background thread
+        try:
+            result = self._invoke()
+        except Exception as exc:  # noqa: BLE001 - bubble up to UI thread
+            logger.exception("Help request failed: %s", exc)
+            message = str(exc) or "No se pudo completar la consulta."
+            self.failed.emit(self._task, message)
+        else:
+            self.result_ready.emit(self._task, str(result))
+
+    def _invoke(self) -> Any:
+        try:
+            return self._func(*self._args, **self._kwargs)
+        except TypeError as exc:  # pragma: no cover - defensive retry
+            if not self._kwargs:
+                raise
+            logger.debug("Retrying help callable without keyword args: %s", exc)
+            return self._func(*self._args)
+
+
+class _HelpCenterDialog(QDialog):  # pragma: no cover - UI container
+    """Modal dialog that displays the intelligent help center."""
+
+    request_chat = Signal(str)
+    request_ui_improvements = Signal(str)
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        overview_html: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Centro de ayuda")
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        self._overview = QLabel(self)
+        self._overview.setObjectName("HelpOverviewLabel")
+        self._overview.setWordWrap(True)
+        self._overview.setTextFormat(Qt.RichText)
+        self._overview.setText(overview_html)
+        layout.addWidget(self._overview)
+
+        self._history = QTextBrowser(self)
+        self._history.setObjectName("HelpHistory")
+        self._history.setOpenExternalLinks(True)
+        self._history.setMinimumHeight(240)
+        layout.addWidget(self._history, 1)
+
+        input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(12)
+        self._prompt = QLineEdit(self)
+        self._prompt.setPlaceholderText("Describe tu duda o el contexto que quieres mejorar…")
+        input_layout.addWidget(self._prompt, 1)
+
+        self._ask_button = QPushButton("Preguntar", self)
+        self._ask_button.setDefault(True)
+        input_layout.addWidget(self._ask_button)
+        layout.addLayout(input_layout)
+
+        self._suggest_button = QPushButton("Sugerir mejoras de la UI", self)
+        layout.addWidget(self._suggest_button, 0, Qt.AlignRight)
+
+        self._feedback_label = QLabel("", self)
+        self._feedback_label.setObjectName("HelpFeedbackLabel")
+        self._feedback_label.setWordWrap(True)
+        self._feedback_label.setVisible(False)
+        layout.addWidget(self._feedback_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._interactive_widgets = [self._prompt, self._ask_button, self._suggest_button]
+
+        self._ask_button.clicked.connect(self._emit_chat_request)
+        self._prompt.returnPressed.connect(self._emit_chat_request)
+        self._suggest_button.clicked.connect(self._emit_ui_request)
+
+    def set_overview_html(self, overview_html: str) -> None:
+        self._overview.setText(overview_html)
+
+    def focus_prompt(self) -> None:
+        self._prompt.setFocus(Qt.ActiveWindowFocusReason)
+
+    def set_loading(self, active: bool) -> None:
+        for widget in self._interactive_widgets:
+            widget.setEnabled(not active)
+
+    def show_feedback(self, text: str, *, error: bool = False) -> None:
+        self._feedback_label.setVisible(bool(text))
+        self._feedback_label.setText(text)
+        if error:
+            self._feedback_label.setStyleSheet("color: #d14343; font-weight: 600;")
+        else:
+            self._feedback_label.setStyleSheet("color: #5f6c7b;")
+
+    def update_history(self, history: Sequence[Mapping[str, Any]]) -> None:
+        if not history:
+            self._history.setHtml(
+                "<p><i>Inicia una conversación con la ayuda inteligente para resolver "
+                "dudas sobre la aplicación.</i></p>"
+            )
+            return
+
+        blocks: list[str] = []
+        for entry in history:
+            role = str(entry.get("role", "assistant"))
+            content = str(entry.get("content", ""))
+            mode = str(entry.get("mode", "chat")) or "chat"
+            if role == "user":
+                label = "Tú"
+            elif role == "assistant":
+                label = "Asistente" if mode == "chat" else "Asistente (UI)"
+            else:
+                label = "Sistema"
+            safe = html.escape(content).replace("\n", "<br/>")
+            blocks.append(
+                "<div class='help-entry' style='margin-bottom: 12px;'>"
+                f"<p style='margin:0; font-weight:600;'>{label}</p>"
+                f"<div style='margin-top:4px;'>{safe}</div>"
+                "</div>"
+            )
+        self._history.setHtml("".join(blocks))
+        scrollbar = self._history.verticalScrollBar()
+        if scrollbar is not None:
+            scrollbar.setValue(scrollbar.maximum())
+
+    def _emit_chat_request(self) -> None:
+        if not self._ask_button.isEnabled():
+            return
+        prompt = self._prompt.text().strip()
+        if not prompt:
+            self.show_feedback("Escribe una pregunta antes de enviar.", error=True)
+            return
+        self.show_feedback("")
+        self._prompt.clear()
+        self.request_chat.emit(prompt)
+
+    def _emit_ui_request(self) -> None:
+        if not self._suggest_button.isEnabled():
+            return
+        prompt = self._prompt.text().strip()
+        if not prompt:
+            self.show_feedback(
+                "Describe el área de la interfaz para generar sugerencias.",
+                error=True,
+            )
+            return
+        self.show_feedback("")
+        self._prompt.clear()
+        self.request_ui_improvements.emit(prompt)
 
 
 class TrackTableModel(QAbstractTableModel):
@@ -268,7 +450,10 @@ class ApiCredentialsDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "Faltan datos",
-                "Debes introducir tanto la clave de AcoustID como tu cuenta/contacto de MusicBrainz.",
+                (
+                    "Debes introducir tanto la clave de AcoustID "
+                    "como tu cuenta/contacto de MusicBrainz."
+                ),
             )
             return
         self.accept()
@@ -337,6 +522,11 @@ class MainWindow(QMainWindow):
         self._scan_worker: _ScanWorker | None = None
         self._summary_badge: QLabel | None = None
         self._help_button: QPushButton | None = None
+        self._help_dialog: _HelpCenterDialog | None = None
+        self._help_worker: _HelpWorker | None = None
+        self._help_history: list[dict[str, str]] = []
+        self._help_callables: dict[str, Callable[..., Any]] = {}
+        self._active_help_mode: str | None = None
         self._table_caption: QLabel | None = None
         self._inspector_caption: QLabel | None = None
         self._shortcuts: list[QShortcut] = []
@@ -359,7 +549,9 @@ class MainWindow(QMainWindow):
         )
         self._action_spectrum_default_tip = "Generar el espectro de la pista seleccionada."
         # fmt: off
-        self._action_copy_default_tip = "Copiar al portapapeles la ruta de las pistas seleccionadas."
+        self._action_copy_default_tip = (
+            "Copiar al portapapeles la ruta de las pistas seleccionadas."
+        )
         # fmt: on
 
         self._build_ui()
@@ -484,7 +676,10 @@ class MainWindow(QMainWindow):
             if _is_macos():
                 hint += "\nInstálalo con: brew install ffmpeg"
             elif _is_windows():
-                hint += "\nDescárgalo desde https://ffmpeg.org/download.html y añade la carpeta bin al PATH."
+                hint += (
+                    "\nDescárgalo desde https://ffmpeg.org/download.html "
+                    "y añade la carpeta bin al PATH."
+                )
             else:
                 hint += (
                     "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install ffmpeg"
@@ -495,9 +690,15 @@ class MainWindow(QMainWindow):
             if _is_macos():
                 hint += "\nInstálalo con: brew install chromaprint"
             elif _is_windows():
-                hint += "\nDescárgalo desde https://acoustid.org/chromaprint e incluye la carpeta bin en tu PATH."
+                hint += (
+                    "\nDescárgalo desde https://acoustid.org/chromaprint "
+                    "e incluye la carpeta bin en tu PATH."
+                )
             else:
-                hint += "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install chromaprint"
+                hint += (
+                    "\nInstálalo con tu gestor de paquetes, por ejemplo: "
+                    "sudo apt install chromaprint"
+                )
             return hint
         return f"{tool} no está disponible en tu PATH."
 
@@ -512,7 +713,8 @@ class MainWindow(QMainWindow):
             missing_labels.append("Chromaprint (fpcalc)")
         if not (self._api_key and self._musicbrainz_ua):
             missing_messages.append(
-                "Configura las claves de AcoustID/MusicBrainz desde «Configurar APIs…» para habilitar el enriquecimiento."
+                "Configura las claves de AcoustID/MusicBrainz "
+                "desde «Configurar APIs…» para habilitar el enriquecimiento."
             )
             missing_labels.append("credenciales de AcoustID/MusicBrainz")
 
@@ -568,9 +770,7 @@ class MainWindow(QMainWindow):
         self._table.setFocus(Qt.ShortcutFocusReason)
         self._table.selectAll()
 
-    def _open_help_center(self) -> None:  # pragma: no cover - UI dialog
-        self._refresh_dependency_state()
-
+    def _build_help_overview_html(self) -> str:
         tips = """
         <ul>
             <li><b>⌘F / Ctrl+F</b> enfoca la búsqueda instantáneamente.</li>
@@ -584,38 +784,66 @@ class MainWindow(QMainWindow):
         ffmpeg_ok = self._dependency_state.get("ffmpeg", False)
         fpcalc_ok = self._dependency_state.get("fpcalc", False)
         # fmt: off
-        ffmpeg_text = "✅ listo" if ffmpeg_ok else self._dependency_hint("ffmpeg").replace("\n", "<br/>")
+        ffmpeg_text = (
+            "✅ listo"
+            if ffmpeg_ok
+            else self._dependency_hint("ffmpeg").replace("\n", "<br/>")
+        )
         dependency_lines.append(f"<li><b>ffmpeg</b>: {ffmpeg_text}</li>")
-        fpcalc_text = "✅ listo" if fpcalc_ok else self._dependency_hint("fpcalc").replace("\n", "<br/>")
+        fpcalc_text = (
+            "✅ listo"
+            if fpcalc_ok
+            else self._dependency_hint("fpcalc").replace("\n", "<br/>")
+        )
         # fmt: on
         dependency_lines.append(f"<li><b>Chromaprint (fpcalc)</b>: {fpcalc_text}</li>")
         if self._api_key and self._musicbrainz_ua:
             dependency_lines.append("<li><b>APIs</b>: ✅ credenciales configuradas.</li>")
         else:
             dependency_lines.append(
-                "<li><b>APIs</b>: Configura tu clave de AcoustID y el identificador de MusicBrainz desde «Configurar APIs…».</li>"
+                "<li><b>APIs</b>: Configura tu clave de AcoustID y el identificador "
+                "de MusicBrainz desde «Configurar APIs…».</li>"
             )
 
         dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
-        message = """
-            <p style="font-size: 15px;">
-                SongSearch Organizer reúne tus herramientas en una sola vista con estética macOS.
-            </p>
-            <p><b>Atajos esenciales</b></p>
-            {tips}
-            <p><b>Estado actual</b></p>
-            {deps}
-            <p>
-                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…» para verificar tus credenciales.
-            </p>
-        """.format(tips=tips, deps=dependencies)
+        return (
+            "<p style=\"font-size: 15px;\">"
+            "SongSearch Organizer reúne tus herramientas en una sola vista con estética macOS."
+            "</p>"
+            "<p><b>Atajos esenciales</b></p>"
+            f"{tips}"
+            "<p><b>Estado actual</b></p>"
+            f"{dependencies}"
+            "<p>"
+            "Escribe tu pregunta y pulsa «Preguntar» para consultar al asistente inteligente "
+            "o pide «Sugerir mejoras de la UI» para recibir ideas de refinamiento visual."
+            "</p>"
+        )
 
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Centro de ayuda")
-        dialog.setIcon(QMessageBox.Information)
-        dialog.setTextFormat(Qt.RichText)
-        dialog.setText(message)
-        dialog.setStandardButtons(QMessageBox.Close)
+    def _open_help_center(self) -> None:  # pragma: no cover - UI dialog
+        self._refresh_dependency_state()
+        overview = self._build_help_overview_html()
+
+        dialog = _HelpCenterDialog(self, overview_html=overview)
+        dialog.request_chat.connect(self._on_help_chat_requested)
+        dialog.request_ui_improvements.connect(self._on_help_ui_improvements_requested)
+        dialog.finished.connect(self._on_help_dialog_finished)
+
+        self._help_dialog = dialog
+        dialog.update_history(self._help_history)
+        if self._help_worker is not None:
+            busy_mode = self._active_help_mode or "chat"
+            busy_text = (
+                "Consultando al asistente…"
+                if busy_mode == "chat"
+                else "Generando sugerencias de interfaz…"
+            )
+            dialog.show_feedback(busy_text, error=False)
+            dialog.set_loading(True)
+        else:
+            dialog.show_feedback("")
+            dialog.set_loading(False)
+        dialog.focus_prompt()
         dialog.exec()
 
     def _show_about_dialog(self) -> None:  # pragma: no cover - UI dialog
@@ -625,6 +853,141 @@ class MainWindow(QMainWindow):
             "<p>Gestiona, busca y enriquece tu biblioteca musical con AcoustID y MusicBrainz.</p>"
         )
         QMessageBox.about(self, "Acerca de SongSearch Organizer", message)
+
+    # ------------------------------------------------------------------
+    # Help center helpers
+    # ------------------------------------------------------------------
+    def _on_help_chat_requested(self, prompt: str) -> None:
+        clean = prompt.strip()
+        if not clean:
+            return
+        self._append_help_message("user", clean, mode="chat")
+        self._start_help_request(mode="chat", prompt=clean)
+
+    def _on_help_ui_improvements_requested(self, prompt: str) -> None:
+        clean = prompt.strip()
+        if not clean:
+            return
+        self._append_help_message("user", clean, mode="ui")
+        self._start_help_request(mode="ui", prompt=clean)
+
+    def _append_help_message(self, role: str, content: str, *, mode: str) -> None:
+        entry = {"role": role, "content": content, "mode": mode}
+        self._help_history.append(entry)
+        if self._help_dialog is not None:
+            self._help_dialog.update_history(self._help_history)
+
+    def _resolve_help_callable(self, name: str) -> Callable[..., Any]:
+        cached = self._help_callables.get(name)
+        if cached is not None:
+            return cached
+
+        candidates = (
+            "songsearch.core.help_center",
+            "songsearch.core.help",
+            "songsearch.core.assistant",
+        )
+        searched_modules: list[str] = []
+        last_error: Exception | None = None
+        for module_name in candidates:
+            try:
+                module = importlib.import_module(module_name)
+            except ModuleNotFoundError:
+                continue
+            except Exception as exc:  # pragma: no cover - defensive logging
+                last_error = exc
+                continue
+            searched_modules.append(module_name)
+            func = getattr(module, name, None)
+            if callable(func):
+                self._help_callables[name] = func
+                return func
+
+        if last_error is not None:
+            raise RuntimeError(
+                f"No se pudo inicializar la ayuda inteligente: {last_error}"
+            ) from last_error
+        if searched_modules:
+            joined = ", ".join(searched_modules)
+            raise RuntimeError(
+                f"La ayuda inteligente no está disponible. No se encontró '{name}' en: {joined}."
+            )
+        raise RuntimeError(
+            "La ayuda inteligente no está disponible. Añade el módulo "
+            "'songsearch.core.help_center' con las funciones necesarias."
+        )
+
+    def _start_help_request(self, *, mode: str, prompt: str) -> None:
+        if self._help_worker is not None:
+            if self._help_dialog is not None:
+                self._help_dialog.show_feedback(
+                    "Ya hay una consulta en curso. Espera a que finalice para enviar otra.",
+                    error=True,
+                )
+            return
+
+        func_name = "ask_chat" if mode == "chat" else "suggest_ui_improvements"
+        try:
+            func = self._resolve_help_callable(func_name)
+        except Exception as exc:
+            message = str(exc) or "La ayuda inteligente no está disponible."
+            self._append_help_message("system", message, mode=mode)
+            if self._help_dialog is not None:
+                self._help_dialog.show_feedback(message, error=True)
+            else:
+                QMessageBox.warning(self, "Ayuda inteligente", message)
+            return
+
+        history_snapshot = tuple(dict(entry) for entry in self._help_history)
+        worker = _HelpWorker(
+            func=func,
+            args=(prompt,),
+            kwargs={"history": history_snapshot},
+            task=mode,
+            parent=self,
+        )
+        worker.result_ready.connect(self._on_help_worker_result)
+        worker.failed.connect(self._on_help_worker_failed)
+        worker.finished.connect(self._reset_help_worker)
+        worker.finished.connect(worker.deleteLater)
+
+        self._help_worker = worker
+        self._active_help_mode = mode
+
+        if self._help_dialog is not None:
+            busy_text = (
+                "Consultando al asistente…"
+                if mode == "chat"
+                else "Generando sugerencias de interfaz…"
+            )
+            self._help_dialog.show_feedback(busy_text, error=False)
+            self._help_dialog.set_loading(True)
+
+        worker.start()
+
+    def _on_help_worker_result(self, mode: str, response: str) -> None:
+        self._append_help_message("assistant", response, mode=mode or "chat")
+        if self._help_dialog is not None:
+            self._help_dialog.set_loading(False)
+            self._help_dialog.show_feedback("")
+
+    def _on_help_worker_failed(self, mode: str, message: str) -> None:
+        friendly = message or "No se pudo completar la consulta."
+        self._append_help_message("system", friendly, mode=mode or "chat")
+        if self._help_dialog is not None:
+            self._help_dialog.set_loading(False)
+            self._help_dialog.show_feedback(friendly, error=True)
+        else:
+            QMessageBox.critical(self, "Ayuda inteligente", friendly)
+
+    def _reset_help_worker(self) -> None:
+        self._help_worker = None
+        self._active_help_mode = None
+
+    def _on_help_dialog_finished(self, _: int) -> None:
+        if self._help_dialog is not None:
+            self._help_dialog.deleteLater()
+        self._help_dialog = None
 
     def _update_summary_badge(self, *, shown: int, total: int, truncated: bool) -> None:
         if self._summary_badge is None:
