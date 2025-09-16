@@ -355,6 +355,28 @@ class MainWindow(QMainWindow):
         self._action_help_overview: QAction | None = None
         self._action_about: QAction | None = None
 
+        self._action_configure_api: QAction | None = None
+        self._action_scan: QAction | None = None
+        self._action_open_track: QAction | None = None
+        self._action_reveal_track: QAction | None = None
+        self._action_copy_paths: QAction | None = None
+        self._action_exit: QAction | None = None
+        self._action_refresh: QAction | None = None
+        self._action_focus_search: QAction | None = None
+        self._action_clear_search: QAction | None = None
+        self._action_select_all: QAction | None = None
+        self._action_enrich: QAction | None = None
+        self._action_spectrum: QAction | None = None
+        self._action_help_overview: QAction | None = None
+        self._action_about: QAction | None = None
+        self._action_enrich_default_tip = (
+            "Enriquecer metadatos mediante AcoustID y MusicBrainz para la pista seleccionada."
+        )
+        self._action_spectrum_default_tip = "Generar el espectro de la pista seleccionada."
+        self._action_copy_default_tip = "Copiar al portapapeles la ruta de las pistas seleccionadas."
+
+        self._create_actions()
+
         self._build_ui()
         self._create_actions()
         self._build_menus()
@@ -681,6 +703,83 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # UI setup
     # ------------------------------------------------------------------
+    def _create_actions(self) -> None:
+        self._action_configure_api = QAction(_load_icon("settings.png"), "Configurar APIs…", self)
+        self._action_configure_api.setShortcut("Ctrl+,")
+        self._action_configure_api.setStatusTip(
+            "Define tus credenciales de AcoustID y MusicBrainz para habilitar el enriquecimiento."
+        )
+        self._action_configure_api.triggered.connect(self._open_api_settings)
+
+        self._action_scan = QAction(_load_icon("scan.png"), "Escanear biblioteca…", self)
+        self._action_scan.setShortcut("Ctrl+Shift+S")
+        self._action_scan.setStatusTip("Analiza una carpeta y añade nuevas pistas a la biblioteca.")
+        self._action_scan.triggered.connect(self._open_scan_dialog)
+
+        self._action_open_track = QAction(_load_icon("open.png"), "Abrir pista", self)
+        self._action_open_track.setShortcut("Ctrl+O")
+        self._action_open_track.setStatusTip(
+            "Abrir la pista seleccionada con la aplicación predeterminada del sistema."
+        )
+        self._action_open_track.triggered.connect(self._open_selected_track)
+
+        self._action_reveal_track = QAction(_load_icon("reveal.png"), "Mostrar en carpeta", self)
+        self._action_reveal_track.setShortcut("Ctrl+Shift+R")
+        self._action_reveal_track.setStatusTip(
+            "Abrir el explorador de archivos en la ubicación de la pista seleccionada."
+        )
+        self._action_reveal_track.triggered.connect(self._reveal_selected_track)
+
+        self._action_copy_paths = QAction(_load_icon("copy.png"), "Copiar ruta", self)
+        self._action_copy_paths.setShortcut("Ctrl+Shift+C")
+        self._action_copy_paths.setStatusTip(self._action_copy_default_tip)
+        self._action_copy_paths.triggered.connect(self._copy_selected_paths)
+
+        self._action_exit = QAction("Salir", self)
+        self._action_exit.setShortcut("Ctrl+Q")
+        self._action_exit.setStatusTip("Cerrar SongSearch Organizer.")
+        self._action_exit.triggered.connect(self.close)
+
+        self._action_refresh = QAction("Actualizar resultados", self)
+        self._action_refresh.setShortcut("F5")
+        self._action_refresh.setStatusTip("Actualizar la lista de pistas según el criterio de búsqueda actual.")
+        self._action_refresh.triggered.connect(self.refresh_results)
+
+        self._action_focus_search = QAction("Buscar pista…", self)
+        self._action_focus_search.setShortcut("Ctrl+F")
+        self._action_focus_search.setStatusTip("Mover el foco al cuadro de búsqueda para filtrar pistas.")
+        self._action_focus_search.triggered.connect(self._focus_search_field)
+
+        self._action_clear_search = QAction("Limpiar búsqueda", self)
+        self._action_clear_search.setShortcut("Ctrl+L")
+        self._action_clear_search.setStatusTip("Borrar el texto del buscador y mostrar todas las pistas.")
+        self._action_clear_search.triggered.connect(self._clear_search_field)
+
+        self._action_select_all = QAction("Seleccionar todo", self)
+        self._action_select_all.setShortcut("Ctrl+A")
+        self._action_select_all.setStatusTip("Seleccionar todas las pistas visibles en la tabla.")
+        self._action_select_all.triggered.connect(self._select_all_tracks)
+
+        self._action_enrich = QAction(_load_icon("enrich.png"), "Enriquecer metadatos", self)
+        self._action_enrich.setShortcut("Ctrl+E")
+        self._action_enrich.setStatusTip(self._action_enrich_default_tip)
+        self._action_enrich.triggered.connect(self._enrich_selected)
+
+        self._action_spectrum = QAction(_load_icon("spectrum.png"), "Generar espectro", self)
+        self._action_spectrum.setShortcut("Ctrl+Shift+E")
+        self._action_spectrum.setStatusTip(self._action_spectrum_default_tip)
+        self._action_spectrum.triggered.connect(self._generate_spectrum_selected)
+
+        self._action_help_overview = QAction("Guía de la aplicación", self)
+        self._action_help_overview.setStatusTip("Resumen de las funciones principales y de los botones disponibles.")
+        self._action_help_overview.triggered.connect(self._show_help_overview)
+
+        self._action_about = QAction("Acerca de SongSearch Organizer", self)
+        self._action_about.setStatusTip("Información sobre la versión y la ubicación de los datos de la aplicación.")
+        self._action_about.triggered.connect(self._show_about_dialog)
+
+        self._update_action_state()
+
     def _build_ui(self) -> None:
         self.setWindowTitle("SongSearch Organizer")
         self.resize(1280, 720)
@@ -818,7 +917,7 @@ class MainWindow(QMainWindow):
 
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(False)
         self._table.setWordWrap(False)
@@ -874,10 +973,13 @@ class MainWindow(QMainWindow):
         self._status.setSizeGripEnabled(False)
         self._status.showMessage("Listo")
 
+        self._build_menus()
+
         selection_model = self._table.selectionModel()
         if selection_model is not None:
             selection_model.selectionChanged.connect(self._on_selection_changed)
 
+        codex/redesign-app-interface-for-macos-style
         self._update_summary_badge(shown=0, total=0, truncated=False)
         self._update_table_caption(
             query_text="",
@@ -980,7 +1082,6 @@ class MainWindow(QMainWindow):
                 self.addAction(action)
 
         self._update_action_state()
-
     def _build_menus(self) -> None:
         menu_bar: QMenuBar = self.menuBar()
         menu_bar.clear()
@@ -1103,33 +1204,18 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
 
-        action_open = QAction(_load_icon("open.png"), "Abrir", menu)
-        action_open.triggered.connect(self._open_selected_track)
-        menu.addAction(action_open)
+        def add_group(*actions: QAction | None) -> None:
+            valid_actions = [action for action in actions if action is not None]
+            if not valid_actions:
+                return
+            if menu.actions():
+                menu.addSeparator()
+            for action in valid_actions:
+                menu.addAction(action)
 
-        action_reveal = QAction(_load_icon("reveal.png"), "Mostrar en carpeta", menu)
-        action_reveal.triggered.connect(self._reveal_selected_track)
-        menu.addAction(action_reveal)
-
-        menu.addSeparator()
-
-        action_spectrum = QAction(_load_icon("spectrum.png"), "Espectro", menu)
-        action_spectrum.triggered.connect(self._generate_spectrum_selected)
-        action_spectrum.setEnabled(self._can_generate_spectrum)
-        if not self._can_generate_spectrum and self._spectrum_disabled_reason:
-            action_spectrum.setStatusTip(self._spectrum_disabled_reason)
-        menu.addAction(action_spectrum)
-
-        action_enrich = QAction(_load_icon("enrich.png"), "Enriquecer", menu)
-        action_enrich.triggered.connect(self._enrich_selected)
-        action_enrich.setEnabled(self._can_enrich_metadata)
-        if not self._can_enrich_metadata and self._enrich_disabled_reason:
-            action_enrich.setStatusTip(self._enrich_disabled_reason)
-        menu.addAction(action_enrich)
-
-        action_copy = QAction(_load_icon("copy.png"), "Copiar ruta", menu)
-        action_copy.triggered.connect(self._copy_selected_paths)
-        menu.addAction(action_copy)
+        add_group(self._action_open_track, self._action_reveal_track)
+        add_group(self._action_spectrum, self._action_enrich)
+        add_group(self._action_copy_paths)
 
         return menu
 
@@ -1177,6 +1263,50 @@ class MainWindow(QMainWindow):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText("\n".join(str(p) for p in paths))
         self._status.showMessage("Ruta copiada al portapapeles", 3000)
+
+    def _focus_search_field(self) -> None:
+        self._search.setFocus(Qt.ShortcutFocusReason)
+        self._search.selectAll()
+
+    def _clear_search_field(self) -> None:
+        self._search.clear()
+        self._search_timer.stop()
+        self._search.setFocus(Qt.ShortcutFocusReason)
+        self.refresh_results()
+
+    def _select_all_tracks(self) -> None:
+        if self._model.rowCount() <= 0:
+            return
+        self._table.setFocus(Qt.ShortcutFocusReason)
+        self._table.selectAll()
+
+    def _show_help_overview(self) -> None:
+        message = (
+            "SongSearch Organizer te ayuda a buscar y organizar tu biblioteca musical.\n\n"
+            "Funciones principales:\n"
+            "• Buscar por título, artista, álbum, género o ruta desde el cuadro de búsqueda.\n"
+            "• Escanear carpetas para añadir nuevas pistas mediante «Escanear biblioteca…».\n"
+            "• Consultar metadatos, carátulas y controles en el panel derecho.\n"
+            "• Enriquecer metadatos con AcoustID/MusicBrainz cuando estén configuradas las APIs.\n"
+            "• Generar espectros de audio si ffmpeg está disponible en el sistema.\n\n"
+            "Botones de la barra superior:\n"
+            "• Configurar APIs… — guarda tus credenciales de AcoustID y MusicBrainz.\n"
+            "• Escanear… — analiza una carpeta y agrega sus pistas a la base de datos.\n"
+            "• Enriquecer — completa metadatos de la pista seleccionada (requiere credenciales).\n"
+            "• Espectro — abre la vista de espectro para la pista seleccionada (requiere ffmpeg).\n\n"
+            "El panel de detalles incluye accesos directos para abrir la pista, mostrarla en la carpeta y copiar su ruta.\n"
+            "También puedes acceder a estas acciones desde los menús Archivo y Edición, usando los atajos indicados."
+        )
+        QMessageBox.information(self, "Ayuda de SongSearch Organizer", message)
+
+    def _show_about_dialog(self) -> None:
+        db_location = str(self._db_path) if self._db_path else "No inicializada"
+        message = (
+            f"SongSearch Organizer {__version__}\n\n"
+            f"Carpeta de datos: {self._data_dir}\n"
+            f"Base de datos: {db_location}"
+        )
+        QMessageBox.information(self, "Acerca de SongSearch Organizer", message)
 
     def _enrich_selected(self) -> None:
         if not self._current_path:
@@ -1399,6 +1529,7 @@ class MainWindow(QMainWindow):
 
     def _update_action_state(self) -> None:
         has_selection = bool(self._current_path)
+        codex/redesign-app-interface-for-macos-style
         has_rows = self._model.rowCount() > 0 if self._model is not None else False
         search_has_text = bool(self._search.text())
         enable_enrich = has_selection and self._can_enrich_metadata
@@ -1406,6 +1537,9 @@ class MainWindow(QMainWindow):
         enable_spectrum = has_selection and self._can_generate_spectrum
         spectrum_hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
 
+=======
+        has_rows = self._model.rowCount() > 0
+        main
         if self._btn_enrich is not None:
             self._btn_enrich.setEnabled(enable_enrich)
             if enable_enrich:
@@ -1450,6 +1584,41 @@ class MainWindow(QMainWindow):
 
         if self._action_focus_search is not None:
             self._action_focus_search.setEnabled(True)
+
+        open_tip = "Abrir la pista seleccionada con la aplicación predeterminada del sistema."
+        reveal_tip = "Abrir el explorador de archivos en la ubicación de la pista seleccionada."
+        copy_disabled_tip = "Selecciona al menos una pista para copiar su ruta."
+
+        if self._action_open_track is not None:
+            self._action_open_track.setEnabled(has_selection)
+            self._action_open_track.setStatusTip(open_tip if has_selection else "Selecciona una pista para poder abrirla.")
+        if self._action_reveal_track is not None:
+            self._action_reveal_track.setEnabled(has_selection)
+            self._action_reveal_track.setStatusTip(reveal_tip if has_selection else "Selecciona una pista para mostrarla en la carpeta.")
+        if self._action_copy_paths is not None:
+            self._action_copy_paths.setEnabled(has_selection)
+            self._action_copy_paths.setStatusTip(
+                self._action_copy_default_tip if has_selection else copy_disabled_tip
+            )
+
+        if self._action_enrich is not None:
+            enable_enrich = has_selection and self._can_enrich_metadata
+            self._action_enrich.setEnabled(enable_enrich)
+            if enable_enrich:
+                self._action_enrich.setStatusTip(self._action_enrich_default_tip)
+            else:
+                hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
+                self._action_enrich.setStatusTip(hint)
+        if self._action_spectrum is not None:
+            enable_spectrum = has_selection and self._can_generate_spectrum
+            self._action_spectrum.setEnabled(enable_spectrum)
+            if enable_spectrum:
+                self._action_spectrum.setStatusTip(self._action_spectrum_default_tip)
+            else:
+                hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
+                self._action_spectrum.setStatusTip(hint)
+        if self._action_select_all is not None:
+            self._action_select_all.setEnabled(has_rows)
 
     def _resolve_db_path(self, con: sqlite3.Connection | None) -> Path | None:
         if con is None:
