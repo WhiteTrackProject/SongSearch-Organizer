@@ -164,6 +164,30 @@ def dupes(
         logger.info("Movidos %d duplicados a %s", total, dest)
 
 
+@app.command()
+def assistant(question: str = typer.Argument(..., help="Pregunta para la ayuda inteligente")) -> None:
+    """Consulta la ayuda inteligente basada en ChatGPT."""
+
+    from ..ai import assistant as ai_assistant
+
+    try:
+        answer = ai_assistant.ask_for_help(question)
+    except ai_assistant.MissingAPIKeyError:
+        typer.secho("Configura OPENAI_API_KEY para usar ChatGPT", fg=typer.colors.YELLOW)
+        return
+    except Exception as exc:  # noqa: BLE001 - informar del fallo y mantener código de error
+        logger.exception("No se pudo obtener ayuda de ChatGPT: %s", exc)
+        raise typer.Exit(code=1) from exc
+
+    if answer:
+        typer.echo(answer)
+    else:
+        typer.secho(
+            "La respuesta de ChatGPT llegó vacía. Intenta reformular tu pregunta.",
+            fg=typer.colors.YELLOW,
+        )
+
+
 def _load_template(name: str) -> str:
     import yaml
 

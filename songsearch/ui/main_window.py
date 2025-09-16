@@ -637,6 +637,47 @@ class MainWindow(QMainWindow):
         dialog.setStandardButtons(QMessageBox.Close)
         dialog.exec()
 
+    def _help_send(self, question: str) -> None:
+        """Send *question* to the AI helper while handling missing credentials."""
+
+        prompt = question.strip()
+        if not prompt:
+            QMessageBox.information(
+                self,
+                "Pregunta vacía",
+                "Escribe una pregunta antes de consultar a ChatGPT.",
+            )
+            return
+
+        from ..ai import assistant as ai_assistant
+
+        try:
+            answer = ai_assistant.ask_for_help(prompt)
+        except ai_assistant.MissingAPIKeyError:
+            message = "Configura OPENAI_API_KEY para usar ChatGPT"
+            QMessageBox.information(self, "ChatGPT no disponible", message)
+            if self._status:
+                self._status.showMessage(message, 8000)
+            return
+        except Exception as exc:  # noqa: BLE001 - mostrar retroalimentación al usuario
+            logger.exception("No se pudo obtener ayuda inteligente: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Error en ChatGPT",
+                f"No se pudo obtener respuesta de ChatGPT.\n\n{exc}",
+            )
+            return
+
+        if not answer:
+            QMessageBox.information(
+                self,
+                "Respuesta vacía",
+                "ChatGPT no devolvió ninguna sugerencia. Intenta reformular la consulta.",
+            )
+            return
+
+        QMessageBox.information(self, "ChatGPT", answer)
+
     def _show_about_dialog(self) -> None:  # pragma: no cover - UI dialog
         message = (
             "<p><b>SongSearch Organizer</b></p>"
