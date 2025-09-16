@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "",
+  "plugins": [
+    "node-workspace"
+  ],
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "always-bump-patch": true,
+      "include-v-in-tag": true,
+      "changelog-types": [
+        { "type": "feat", "section": "✨ Añadido", "hidden": false },
+        { "type": "feature", "section": "✨ Añadido", "hidden": false },
+        { "type": "enhancement", "section": "✨ Añadido", "hidden": false },
+        { "type": "fix", "section": "🐞 Corregido", "hidden": false },
+        { "type": "perf", "section": "⚡ Rendimiento", "hidden": false },
+        { "type": "refactor", "section": "🛠 Cambiado", "hidden": false },
+        { "type": "docs", "section": "📚 Documentación", "hidden": false },
+        { "type": "test", "section": "🧪 Tests", "hidden": false },
+        { "type": "chore", "section": "🧹 Chore", "hidden": false },
+        { "type": "build", "section": "🏗 Build", "hidden": false },
+        { "type": "ci", "section": "🤖 CI", "hidden": false }
+      ],
+      "extra-files": [
+        {
+          "type": "python",
+          "path": "songsearch/__init__.py"
+        }
+      ]
+    }
+  }
+}
