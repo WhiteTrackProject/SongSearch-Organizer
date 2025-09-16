@@ -734,7 +734,11 @@ class MainWindow(QMainWindow):
         self._summary_badge.setObjectName("SummaryBadge")
         title_row.addWidget(self._summary_badge, 0, Qt.AlignVCenter)
 
-        self._help_button = QPushButton(_load_icon("help.png"), "Centro de ayuda", header)
+        self._help_button = QPushButton(
+            _load_icon("help.png"),
+            "Centro de ayuda",
+            header,
+        )
         self._help_button.setObjectName("HelpButton")
         self._help_button.setProperty("helpButton", True)
         self._help_button.clicked.connect(self._open_help_center)
