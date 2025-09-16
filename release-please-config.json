@@ -1,9 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bootstrap-sha": "",
-  "plugins": [
-    "node-workspace"
-  ],
   "packages": {
     ".": {
       "release-type": "python",
@@ -30,6 +27,11 @@
           "path": "songsearch/__init__.py"
         },
         {
+          "type": "toml",
+          "path": "pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
           "type": "plain",
           "path": "README.md",
           "regex": "^# SongSearch Organizer \\(v\\d+\\.\\d+\\.\\d+\\)$",
@@ -46,6 +48,12 @@
           "path": "README.md",
           "regex": "^MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/\\d+\\.\\d+\\.\\d+ \\(tu_email@ejemplo.com\\)$",
           "replacer": "MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/{{version}} (tu_email@ejemplo.com)"
+        },
+        {
+          "type": "plain",
+          "path": ".env.example",
+          "regex": "^MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/\\d+\\.\\d+\\.\\d+ \\(hache_tek@protonmail.com\\)$",
+          "replacer": "MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/{{version}} (hache_tek@protonmail.com)"
         }
       ]
     }

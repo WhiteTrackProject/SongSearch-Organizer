@@ -1,4 +1,4 @@
-# SongSearch Organizer (v0.3.3)
+# SongSearch Organizer (v0.4.0)
 
 ![Coverage](assets/coverage-badge.svg)
 
@@ -29,7 +29,7 @@ La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entre versiones.
 
-## ✨ Características (MVP v0.3.3)
+## ✨ Características (MVP v0.4.0)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
@@ -39,6 +39,7 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entr
 - **Duplicados**: agrupación por `duración±1s+tamaño+formato` + hash parcial opcional, con resolución automática que prioriza formatos sin pérdida, mayor bitrate y duración estable.
 - **Metadatos**: `pyacoustid + Chromaprint` → `AcoustID` → `MusicBrainz` (+ Cover Art).
 - **Espectro**: generar PNG con `ffmpeg` (y abrir Spek/Audacity si lo prefieres).
+- **Integración Rekordbox**: detección automática de la base de datos, lectura de playlists y exportación rápida a `.m3u8` sin tocar tu librería original.
 - **UI rápida** (PySide6): buscador, tabla de resultados, panel de detalles, progreso.
 
 ---
@@ -105,7 +106,7 @@ Crea `.env` en la raíz con tus claves (AcoustID, OpenAI y MusicBrainz):
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
 OPENAI_API_KEY=tu_api_key_de_openai
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.3 (tu_email@ejemplo.com)
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.4.0 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
 
@@ -130,6 +131,23 @@ OPENAI_MODEL=gpt-4.1-mini
 ```
 
 Si omites la variable, el sistema mantendrá el modelo predeterminado.
+
+## 🔌 Integraciones DJ
+
+- **Rekordbox**: usa `RekordboxAdapter.detect()` para localizar tu base de datos y acceder a playlists en modo solo lectura. Puedes exportar cualquier selección a `.m3u8` con `export_playlist_to_m3u`.
+
+```python
+from songsearch.integrations import RekordboxAdapter, export_playlist_to_m3u
+
+adapter = RekordboxAdapter.detect()
+if adapter:
+    playlists = adapter.list_playlists()
+    first = playlists[0]
+    rows = adapter.list_tracks_in_playlist(first["id"])
+    export_playlist_to_m3u(rows, "~/Desktop/playlist.m3u8")
+```
+
+Las operaciones son de solo lectura: tu librería de Rekordbox permanece intacta.
 
 **Plantillas de organización** (`config/templates.yml`):
 
