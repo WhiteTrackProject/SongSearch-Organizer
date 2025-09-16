@@ -8,6 +8,18 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import acoustid
+import musicbrainzngs
+from mutagen import File as MutagenFile
+
+from .db import (
+    get_by_path,
+    get_fingerprint_cache,
+    update_fields,
+    upsert_fingerprint_cache,
+)
+
+
 logger = logging.getLogger(__name__)
 
 with warnings.catch_warnings():
@@ -21,17 +33,6 @@ with warnings.catch_warnings():
         )
     else:
         _AIFC_AVAILABLE = True
-
-import acoustid
-import musicbrainzngs
-from mutagen import File as MutagenFile
-
-from .db import (
-    get_by_path,
-    get_fingerprint_cache,
-    update_fields,
-    upsert_fingerprint_cache,
-)
 
 _AIFF_SUFFIXES = {".aif", ".aiff"}
 
