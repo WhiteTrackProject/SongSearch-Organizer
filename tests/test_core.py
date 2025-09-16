@@ -36,6 +36,40 @@ def test_scan_and_simulate(tmp_path: Path) -> None:
     assert len(plan) == 1
 
 
+def test_simulate_mb_release_fallback_uses_tags(tmp_path: Path) -> None:
+    db_path = init_db(tmp_path)
+    con = connect(db_path)
+    audio = tmp_path / "song.mp3"
+    audio.write_bytes(b"fake")
+    upsert_track(
+        con,
+        {
+            "path": str(audio),
+            "artist": "Artist",
+            "album": "Album",
+            "title": "Example",
+            "track_no": 7,
+            "format": "mp3",
+        },
+    )
+
+    dest = tmp_path / "library"
+    plan = simulate(
+        con,
+        dest,
+        "{ReleaseID}/{TrackNo}/{Título}.{ext}",
+        album_mode="mb-release",
+        fallback_to_tags=True,
+    )
+
+    assert plan == [
+        (
+            str(audio),
+            str((dest.expanduser().resolve() / "Artist" / "Album" / "07 - Example.mp3")),
+        )
+    ]
+
+
 def test_scan_interrupts(tmp_path: Path) -> None:
     db_path = init_db(tmp_path)
     con = connect(db_path)
