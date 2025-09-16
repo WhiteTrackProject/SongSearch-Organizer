@@ -20,9 +20,7 @@ TEMPERATURE = 0.3
 def _ensure_api_key() -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError(
-            "Falta OPENAI_API_KEY; configúralo en tu entorno o en el archivo .env."
-        )
+        raise RuntimeError("Falta OPENAI_API_KEY; configúralo en tu entorno o en el archivo .env.")
     return api_key
 
 
@@ -68,9 +66,7 @@ def _format_concerns(concerns: Sequence[str] | None) -> str:
     return "\n".join(f"- {item}" for item in concerns)
 
 
-def _send_messages(
-    *, system_prompt: str, user_text: str, model: str | None = None
-) -> str:
+def _send_messages(*, system_prompt: str, user_text: str, model: str | None = None) -> str:
     client = _create_client()
     payload = [
         {
