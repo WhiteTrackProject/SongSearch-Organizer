@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -292,6 +293,16 @@ class MainWindow(QMainWindow):
         self._db_path: Path | None = None
         self._env_path = self._data_dir / ".env"
         self._load_env_files()
+        self._api_key: str = ""
+        self._musicbrainz_ua: str = ""
+        self._dependency_state: dict[str, bool] = {}
+        self._can_enrich_metadata = False
+        self._can_generate_spectrum = False
+        self._enrich_disabled_reason: str | None = None
+        self._spectrum_disabled_reason: str | None = None
+        self._dependency_warning_shown = False
+        self._startup_handled = False
+        self._load_api_credentials()
         if con is None:
             db_path = init_db(self._data_dir)
             con = connect(db_path)
@@ -320,11 +331,13 @@ class MainWindow(QMainWindow):
         self._btn_scan: QPushButton | None = None
         self._btn_enrich: QPushButton | None = None
         self._btn_spectrum: QPushButton | None = None
+        self._btn_config: QPushButton | None = None
         self._scan_worker: _ScanWorker | None = None
 
         self._build_ui()
+        self._refresh_dependency_state()
         self.refresh_results()
-        QTimer.singleShot(0, self._maybe_prompt_api_credentials)
+        QTimer.singleShot(0, self._handle_startup_prompts)
 
     # ------------------------------------------------------------------
     # Configuración
@@ -336,16 +349,29 @@ class MainWindow(QMainWindow):
         if self._env_path.exists():
             load_dotenv(self._env_path, override=False)
 
-    def _maybe_prompt_api_credentials(self) -> None:
+    def _load_api_credentials(self) -> None:
         stored = dotenv_values(self._env_path) if self._env_path.exists() else {}
-        api_key = os.getenv("ACOUSTID_API_KEY") or stored.get("ACOUSTID_API_KEY", "")
-        musicbrainz = os.getenv("MUSICBRAINZ_USER_AGENT") or stored.get(
-            "MUSICBRAINZ_USER_AGENT", ""
-        )
-        if api_key and musicbrainz:
+        self._api_key = (os.getenv("ACOUSTID_API_KEY") or stored.get("ACOUSTID_API_KEY", "")).strip()
+        self._musicbrainz_ua = (
+            os.getenv("MUSICBRAINZ_USER_AGENT")
+            or stored.get("MUSICBRAINZ_USER_AGENT", "")
+            or ""
+        ).strip()
+
+    def _handle_startup_prompts(self) -> None:
+        if self._startup_handled:
+            return
+        self._startup_handled = True
+        self._refresh_dependency_state()
+        self._maybe_prompt_api_credentials()
+        self._maybe_warn_dependencies(force_dialog=True)
+
+    def _maybe_prompt_api_credentials(self, *, force: bool = False) -> None:
+        self._load_api_credentials()
+        if not force and self._api_key and self._musicbrainz_ua:
             return
 
-        dialog = ApiCredentialsDialog(self, api_key, musicbrainz)
+        dialog = ApiCredentialsDialog(self, self._api_key, self._musicbrainz_ua)
         if dialog.exec() == QDialog.Accepted:
             api_key, musicbrainz = dialog.values()
             self._save_api_credentials(api_key, musicbrainz)
@@ -357,6 +383,8 @@ class MainWindow(QMainWindow):
                     "Configura las APIs para habilitar el enriquecimiento de metadatos.",
                     8000,
                 )
+        self._refresh_dependency_state()
+        self._maybe_warn_dependencies()
 
     def _save_api_credentials(self, api_key: str, musicbrainz: str) -> None:
         try:
@@ -380,6 +408,101 @@ class MainWindow(QMainWindow):
 
         os.environ["ACOUSTID_API_KEY"] = api_key
         os.environ["MUSICBRAINZ_USER_AGENT"] = musicbrainz
+        self._api_key = api_key
+        self._musicbrainz_ua = musicbrainz
+
+    def _refresh_dependency_state(self) -> None:
+        self._load_api_credentials()
+        ffmpeg_available = shutil.which("ffmpeg") is not None
+        fpcalc_available = shutil.which("fpcalc") is not None
+        self._dependency_state = {"ffmpeg": ffmpeg_available, "fpcalc": fpcalc_available}
+
+        if ffmpeg_available:
+            self._can_generate_spectrum = True
+            self._spectrum_disabled_reason = None
+        else:
+            self._can_generate_spectrum = False
+            self._spectrum_disabled_reason = self._dependency_hint("ffmpeg")
+
+        enrich_reasons: list[str] = []
+        if not self._api_key or not self._musicbrainz_ua:
+            missing_fields = []
+            if not self._api_key:
+                missing_fields.append("ACOUSTID_API_KEY")
+            if not self._musicbrainz_ua:
+                missing_fields.append("MUSICBRAINZ_USER_AGENT")
+            hint = "Configura tus credenciales de AcoustID/MusicBrainz desde «Configurar APIs…»."
+            if missing_fields:
+                hint += "\nFaltan: " + ", ".join(missing_fields) + "."
+            enrich_reasons.append(hint)
+        if not fpcalc_available:
+            enrich_reasons.append(self._dependency_hint("fpcalc"))
+        self._can_enrich_metadata = not enrich_reasons
+        self._enrich_disabled_reason = "\n\n".join(enrich_reasons) if enrich_reasons else None
+
+        self._details.update_capabilities(
+            can_enrich=self._can_enrich_metadata,
+            can_generate_spectrum=self._can_generate_spectrum,
+            enrich_reason=self._enrich_disabled_reason,
+            spectrum_reason=self._spectrum_disabled_reason,
+        )
+        self._update_action_state()
+
+    def _dependency_hint(self, tool: str) -> str:
+        if tool == "ffmpeg":
+            hint = "ffmpeg no se encontró en tu PATH."
+            if _is_macos():
+                hint += "\nInstálalo con: brew install ffmpeg"
+            elif _is_windows():
+                hint += "\nDescárgalo desde https://ffmpeg.org/download.html y añade la carpeta bin al PATH."
+            else:
+                hint += "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install ffmpeg"
+            return hint
+        if tool == "fpcalc":
+            hint = "Chromaprint (fpcalc) no se encontró en tu PATH."
+            if _is_macos():
+                hint += "\nInstálalo con: brew install chromaprint"
+            elif _is_windows():
+                hint += "\nDescárgalo desde https://acoustid.org/chromaprint e incluye la carpeta bin en tu PATH."
+            else:
+                hint += "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install chromaprint"
+            return hint
+        return f"{tool} no está disponible en tu PATH."
+
+    def _maybe_warn_dependencies(self, *, force_dialog: bool = False) -> None:
+        missing_messages: list[str] = []
+        missing_labels: list[str] = []
+        if not self._dependency_state.get("ffmpeg", False):
+            missing_messages.append(self._dependency_hint("ffmpeg"))
+            missing_labels.append("ffmpeg")
+        if not self._dependency_state.get("fpcalc", False):
+            missing_messages.append(self._dependency_hint("fpcalc"))
+            missing_labels.append("Chromaprint (fpcalc)")
+        if not (self._api_key and self._musicbrainz_ua):
+            missing_messages.append(
+                "Configura las claves de AcoustID/MusicBrainz desde «Configurar APIs…» para habilitar el enriquecimiento."
+            )
+            missing_labels.append("credenciales de AcoustID/MusicBrainz")
+
+        if not missing_messages:
+            self._dependency_warning_shown = False
+            return
+
+        if force_dialog or not self._dependency_warning_shown:
+            QMessageBox.warning(
+                self,
+                "Dependencias pendientes",
+                "Se detectaron requisitos sin configurar:\n\n" + "\n\n".join(missing_messages),
+            )
+        if self._status:
+            self._status.showMessage(
+                "Pendiente: " + ", ".join(missing_labels),
+                10000,
+            )
+        self._dependency_warning_shown = True
+
+    def _open_api_settings(self) -> None:
+        self._maybe_prompt_api_credentials(force=True)
 
     # ------------------------------------------------------------------
     # UI setup
@@ -423,6 +546,10 @@ class MainWindow(QMainWindow):
         actions_layout = QHBoxLayout(actions_container)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(8)
+
+        self._btn_config = QPushButton(_load_icon("settings.png"), "Configurar APIs…", actions_container)
+        self._btn_config.clicked.connect(self._open_api_settings)
+        actions_layout.addWidget(self._btn_config)
 
         self._btn_scan = QPushButton(_load_icon("scan.png"), "Escanear…", actions_container)
         self._btn_scan.clicked.connect(self._open_scan_dialog)
@@ -597,10 +724,16 @@ class MainWindow(QMainWindow):
 
         action_spectrum = QAction(_load_icon("spectrum.png"), "Espectro", menu)
         action_spectrum.triggered.connect(self._generate_spectrum_selected)
+        action_spectrum.setEnabled(self._can_generate_spectrum)
+        if not self._can_generate_spectrum and self._spectrum_disabled_reason:
+            action_spectrum.setStatusTip(self._spectrum_disabled_reason)
         menu.addAction(action_spectrum)
 
         action_enrich = QAction(_load_icon("enrich.png"), "Enriquecer", menu)
         action_enrich.triggered.connect(self._enrich_selected)
+        action_enrich.setEnabled(self._can_enrich_metadata)
+        if not self._can_enrich_metadata and self._enrich_disabled_reason:
+            action_enrich.setStatusTip(self._enrich_disabled_reason)
         menu.addAction(action_enrich)
 
         action_copy = QAction(_load_icon("copy.png"), "Copiar ruta", menu)
@@ -862,9 +995,21 @@ class MainWindow(QMainWindow):
     def _update_action_state(self) -> None:
         has_selection = bool(self._current_path)
         if self._btn_enrich is not None:
-            self._btn_enrich.setEnabled(has_selection)
+            enable_enrich = has_selection and self._can_enrich_metadata
+            self._btn_enrich.setEnabled(enable_enrich)
+            if enable_enrich:
+                self._btn_enrich.setToolTip("")
+            else:
+                hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
+                self._btn_enrich.setToolTip(hint)
         if self._btn_spectrum is not None:
-            self._btn_spectrum.setEnabled(has_selection)
+            enable_spectrum = has_selection and self._can_generate_spectrum
+            self._btn_spectrum.setEnabled(enable_spectrum)
+            if enable_spectrum:
+                self._btn_spectrum.setToolTip("")
+            else:
+                hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
+                self._btn_spectrum.setToolTip(hint)
 
     def _resolve_db_path(self, con: sqlite3.Connection | None) -> Path | None:
         if con is None:
