@@ -25,7 +25,15 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QGuiApplication, QIcon, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -43,7 +51,6 @@ from PySide6.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPushButton,
-    QShortcut,
     QSplitter,
     QStatusBar,
     QTableView,
