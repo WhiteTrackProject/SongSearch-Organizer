@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Helpers that expose the intelligent help-center features to the UI layer."""
+
+from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
