@@ -141,9 +141,7 @@ def enrich_file(
                 best = cand
     except ModuleNotFoundError as exc:
         update_fields(con, str(path), {"fp_status": "skipped"})
-        logger.warning(
-            "AIFF support requires Python <3.13; skipping file %s (%s)", path, exc
-        )
+        logger.warning("AIFF support requires Python <3.13; skipping file %s (%s)", path, exc)
         return None
     except Exception as e:
         update_fields(con, str(path), {"fp_status": "error"})

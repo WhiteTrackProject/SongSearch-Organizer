@@ -33,6 +33,7 @@ from PySide6.QtGui import (
     QIcon,
     QKeySequence,
 )
+
 try:  # PySide6 < 6.7 exports ``QShortcut`` from ``QtWidgets``
     from PySide6.QtGui import QShortcut
 except ImportError:  # pragma: no cover - fallback for older runtimes
@@ -1396,12 +1397,8 @@ class MainWindow(QMainWindow):
         self._action_simulate.setStatusTip("Genera un plan de organización sin aplicar cambios.")
         self._action_simulate.triggered.connect(self._simulate_library)
 
-        self._action_apply_plan = QAction(
-            _load_icon("apply.png"), "Mover/ Copiar archivos…", self
-        )
-        self._action_apply_plan.setStatusTip(
-            "Aplica el último plan de organización generado."
-        )
+        self._action_apply_plan = QAction(_load_icon("apply.png"), "Mover/ Copiar archivos…", self)
+        self._action_apply_plan.setStatusTip("Aplica el último plan de organización generado.")
         self._action_apply_plan.triggered.connect(self._apply_organizer_plan)
 
         self._action_open_track = QAction(_load_icon("open.png"), "Abrir", self)
@@ -2170,7 +2167,9 @@ class MainWindow(QMainWindow):
         if self._btn_simulate is not None:
             self._btn_simulate.setEnabled(simulate_available)
             self._btn_simulate.setToolTip(
-                "" if simulate_available else "Conecta una base de datos para simular la biblioteca."
+                ""
+                if simulate_available
+                else "Conecta una base de datos para simular la biblioteca."
             )
         if self._action_simulate is not None:
             self._action_simulate.setEnabled(simulate_available)
@@ -2186,11 +2185,7 @@ class MainWindow(QMainWindow):
             self._btn_apply_plan.setToolTip("" if has_plan else plan_hint)
         if self._action_apply_plan is not None:
             self._action_apply_plan.setEnabled(has_plan)
-            apply_tip = (
-                "Aplica el último plan de organización generado."
-                if has_plan
-                else plan_hint
-            )
+            apply_tip = "Aplica el último plan de organización generado." if has_plan else plan_hint
             self._action_apply_plan.setStatusTip(apply_tip)
 
         if self._btn_enrich is not None:
