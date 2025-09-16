@@ -7,7 +7,8 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
+    QFrame,
 )
 
 from ..core.db import connect, get_by_path
@@ -69,6 +71,8 @@ class DetailsPanel(QWidget):
         self._enrich_min_confidence = 0.6
         self._enrich_write_tags = False
 
+        self._title_label: QLabel | None = None
+        self._subtitle_label: QLabel | None = None
         self._value_labels: dict[str, QLabel] = {}
         self._can_enrich_metadata = True
         self._can_generate_spectrum = True
@@ -85,7 +89,22 @@ class DetailsPanel(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(20)
+        layout.setSpacing(24)
+
+        header_layout = QVBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+
+        self._title_label = QLabel("Selecciona una pista")
+        self._title_label.setObjectName("DetailsHeadline")
+        header_layout.addWidget(self._title_label)
+
+        self._subtitle_label = QLabel("Los metadatos aparecerán aquí.")
+        self._subtitle_label.setObjectName("DetailsSubheadline")
+        self._subtitle_label.setWordWrap(True)
+        header_layout.addWidget(self._subtitle_label)
+
+        layout.addLayout(header_layout)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -97,22 +116,27 @@ class DetailsPanel(QWidget):
 
         layout.addLayout(form)
 
-        layout.addSpacing(16)
-
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
+        actions_frame = QFrame(self)
+        actions_frame.setObjectName("DetailsActions")
+        ensure_styled_background(actions_frame)
+        actions = QHBoxLayout(actions_frame)
+        actions.setContentsMargins(16, 16, 16, 16)
         actions.setSpacing(12)
 
         self.btn_open = QPushButton("Abrir…")
+        self.btn_open.setProperty("secondaryButton", True)
         actions.addWidget(self.btn_open)
 
         self.btn_reveal = QPushButton("Mostrar en carpeta")
+        self.btn_reveal.setProperty("secondaryButton", True)
         actions.addWidget(self.btn_reveal)
 
         self.btn_copy_path = QPushButton("Copiar ruta")
+        self.btn_copy_path.setProperty("secondaryButton", True)
         actions.addWidget(self.btn_copy_path)
 
         self.btn_musicbrainz = QPushButton("MusicBrainz")
+        self.btn_musicbrainz.setProperty("tonalButton", True)
         actions.addWidget(self.btn_musicbrainz)
 
         self.btn_enrich = QPushButton("Enriquecer")
@@ -124,8 +148,18 @@ class DetailsPanel(QWidget):
         actions.addWidget(self.btn_spectrum)
 
         actions.addStretch(1)
-        layout.addLayout(actions)
+        layout.addWidget(actions_frame)
         layout.addStretch(1)
+
+        for button in (
+            self.btn_open,
+            self.btn_reveal,
+            self.btn_copy_path,
+            self.btn_musicbrainz,
+            self.btn_enrich,
+            self.btn_spectrum,
+        ):
+            button.setCursor(Qt.PointingHandCursor)
 
     def _build_detail_labels(self) -> Iterable[tuple[str, QLabel]]:
         """Return an iterable of ``(field, label_widget)`` pairs for the form."""
@@ -168,6 +202,12 @@ class DetailsPanel(QWidget):
         """
 
         self._current_data = None
+        if self._title_label is not None:
+            self._title_label.setText("Selecciona una pista")
+            self._title_label.setToolTip("")
+        if self._subtitle_label is not None:
+            self._subtitle_label.setText("Los metadatos aparecerán aquí.")
+            self._subtitle_label.setToolTip("")
         for label in self._value_labels.values():
             label.setText("—")
         for button in self._iter_action_buttons():
@@ -200,6 +240,7 @@ class DetailsPanel(QWidget):
             return
 
         self._current_data = normalized
+        self._update_headline(normalized)
         for field, label in self._value_labels.items():
             label.setText(self._format_field_value(field, normalized.get(field)))
 
@@ -266,6 +307,49 @@ class DetailsPanel(QWidget):
                 return str(value)
         return str(value)
 
+    def _update_headline(self, data: Mapping[str, Any]) -> None:
+        if self._title_label is None or self._subtitle_label is None:
+            return
+        title = self._derive_title(data)
+        subtitle = self._derive_subtitle(data)
+        self._title_label.setText(title)
+        self._title_label.setToolTip(title)
+        self._subtitle_label.setText(subtitle)
+        self._subtitle_label.setToolTip(subtitle)
+
+    def _derive_title(self, data: Mapping[str, Any]) -> str:
+        raw_title = data.get("title")
+        if isinstance(raw_title, str) and raw_title.strip():
+            return raw_title.strip()
+        path_value = data.get("path")
+        if isinstance(path_value, str) and path_value:
+            return Path(path_value).stem
+        return "Pista seleccionada"
+
+    def _derive_subtitle(self, data: Mapping[str, Any]) -> str:
+        artist = self._coerce_str(data.get("artist"))
+        album = self._coerce_str(data.get("album"))
+        year = self._coerce_str(data.get("year"))
+        parts: list[str] = []
+        if artist:
+            parts.append(artist)
+        if album and year:
+            parts.append(f"{album} ({year})")
+        elif album:
+            parts.append(album)
+        elif year:
+            parts.append(year)
+        if not parts:
+            return "Metadatos pendientes"
+        return " · ".join(parts)
+
+    def _coerce_str(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value)
+
     def _toggle_action_buttons(self, enabled: bool) -> None:
         for button in self._iter_action_buttons():
             self._apply_capability_to_button(button, enabled)
@@ -324,8 +408,47 @@ class DetailsPanel(QWidget):
     # UI actions
     # ----------------------------------------------------------------------------------
     def _connect_action_signals(self) -> None:
+        self.btn_musicbrainz.clicked.connect(self._open_musicbrainz)
         self.btn_spectrum.clicked.connect(self._make_spectrum)
         self.btn_enrich.clicked.connect(self._enrich_one)
+
+    def _open_musicbrainz(self) -> None:
+        data = self._current_data or {}
+        if not data:
+            QMessageBox.information(
+                self,
+                "Sin metadatos",
+                "Selecciona una pista con coincidencias de MusicBrainz para abrir la ficha.",
+            )
+            return
+
+        release_id = self._coerce_str(data.get("mb_release_id"))
+        group_id = self._coerce_str(data.get("mb_release_group_id"))
+        recording_id = self._coerce_str(data.get("mb_recording_id"))
+
+        if release_id:
+            target_url = f"https://musicbrainz.org/release/{release_id}"
+            description = "el lanzamiento en MusicBrainz"
+        elif group_id:
+            target_url = f"https://musicbrainz.org/release-group/{group_id}"
+            description = "el grupo de lanzamientos en MusicBrainz"
+        elif recording_id:
+            target_url = f"https://musicbrainz.org/recording/{recording_id}"
+            description = "la grabación en MusicBrainz"
+        else:
+            QMessageBox.information(
+                self,
+                "Sin identificadores",
+                "Enriquece la pista para obtener enlaces directos a MusicBrainz.",
+            )
+            return
+
+        if not QDesktopServices.openUrl(QUrl(target_url)):
+            QMessageBox.warning(
+                self,
+                "No se pudo abrir MusicBrainz",
+                f"No fue posible abrir {description}. Copia el enlace manualmente:\n{target_url}",
+            )
 
     def _set_button_busy(
         self,
