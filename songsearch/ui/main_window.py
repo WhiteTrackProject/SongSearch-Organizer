@@ -821,7 +821,7 @@ class MainWindow(QMainWindow):
 
         dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
         return (
-            "<p style=\"font-size: 15px;\">"
+            '<p style="font-size: 15px;">'
             "SongSearch Organizer reúne tus herramientas en una sola vista con estética macOS."
             "</p>"
             "<p><b>Atajos esenciales</b></p>"
@@ -858,33 +858,6 @@ class MainWindow(QMainWindow):
             dialog.show_feedback("")
             dialog.set_loading(False)
         dialog.focus_prompt()
-                "<li><b>APIs</b>: Configura tu clave de AcoustID y el "
-                "identificador de MusicBrainz desde «Configurar APIs…».</li>"
-            )
-
-        dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
-        message = f"""
-            <p style="font-size: 15px;">
-                SongSearch Organizer reúne tus herramientas en una sola vista
-                con estética macOS.
-            </p>
-            <p><b>Atajos esenciales</b></p>
-            {tips}
-            <p><b>Estado actual</b></p>
-            {dependencies}
-            <p>
-                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…»
-                para verificar tus credenciales.
-            </p>
-        """
-
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Centro de ayuda")
-        dialog.setIcon(QMessageBox.Information)
-        dialog.setTextFormat(Qt.RichText)
-        dialog.setText(message)
-        dialog.setStandardButtons(QMessageBox.Close)
-        dialog.exec()
 
     def _help_send(self, question: str) -> None:
         """Send *question* to the AI helper while handling missing credentials."""
