@@ -20,9 +20,7 @@ def _clean_text(value: Any) -> str:
     return str(value).strip()
 
 
-def _filter_history(
-    history: Sequence[HistoryEntry] | None, *, mode: str
-) -> list[HistoryEntry]:
+def _filter_history(history: Sequence[HistoryEntry] | None, *, mode: str) -> list[HistoryEntry]:
     if not history:
         return []
     selected: list[HistoryEntry] = []
@@ -84,9 +82,7 @@ def ask_chat(prompt: str, history: Sequence[HistoryEntry] | None = None) -> str:
     return ai.ask_chat(message)
 
 
-def suggest_ui_improvements(
-    prompt: str, history: Sequence[HistoryEntry] | None = None
-) -> str:
+def suggest_ui_improvements(prompt: str, history: Sequence[HistoryEntry] | None = None) -> str:
     """Proxy that adapts the UI suggestion flow to ``ai_assistant`` helpers."""
 
     clean_prompt = _clean_text(prompt)
