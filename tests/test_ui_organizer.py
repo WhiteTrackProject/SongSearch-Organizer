@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import os
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pytest
 
 pytest.importorskip(
+    "PySide6.QtWidgets",
+    reason="PySide6 no está disponible o falta libGL.so.1 en el entorno de ejecución",
     "PySide6.QtGui",
     reason="Qt runtime with libEGL is required for UI tests",
     exc_type=ImportError,
@@ -13,8 +17,6 @@ pytest.importorskip(
 import songsearch.ui.main_window as ui_main_window
 from songsearch.core.db import connect, init_db
 from songsearch.ui.main_window import MainWindow
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture(scope="session")
