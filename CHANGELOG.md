@@ -2,7 +2,7 @@
 
 Todas las novedades relevantes se documentan en este archivo siguiendo un formato inspirado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
-## [0.4.0] - 2025-09-17
+## [0.4.0] - 2025-09-16
 ### Añadido
 - Integración Rekordbox capaz de detectar bases de datos, listar playlists y exportarlas a `.m3u8` sin modificar el archivo original.
 - Nuevo módulo `songsearch.ai_assistant` con utilidades `ask_chat` y `suggest_ui_improvements` basadas en la API Responses de OpenAI.
