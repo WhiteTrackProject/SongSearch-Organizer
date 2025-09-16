@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
 from PySide6.QtCore import (
     QAbstractTableModel,
     QItemSelection,
@@ -47,8 +48,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from dotenv import dotenv_values, find_dotenv, load_dotenv, set_key
 
 from .. import __version__
 from ..core.db import connect, fts_query_from_text, init_db, query_tracks
@@ -268,7 +267,10 @@ class ApiCredentialsDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "Faltan datos",
-                "Debes introducir tanto la clave de AcoustID como tu cuenta/contacto de MusicBrainz.",
+                (
+                    "Debes introducir tanto la clave de AcoustID como tu "
+                    "cuenta/contacto de MusicBrainz."
+                ),
             )
             return
         self.accept()
@@ -358,9 +360,9 @@ class MainWindow(QMainWindow):
             "Enriquecer metadatos mediante AcoustID y MusicBrainz para la pista seleccionada."
         )
         self._action_spectrum_default_tip = "Generar el espectro de la pista seleccionada."
-        # fmt: off
-        self._action_copy_default_tip = "Copiar al portapapeles la ruta de las pistas seleccionadas."
-        # fmt: on
+        self._action_copy_default_tip = (
+            "Copiar al portapapeles la ruta de las pistas seleccionadas."
+        )
 
         self._build_ui()
         self._create_actions()
@@ -484,7 +486,10 @@ class MainWindow(QMainWindow):
             if _is_macos():
                 hint += "\nInstálalo con: brew install ffmpeg"
             elif _is_windows():
-                hint += "\nDescárgalo desde https://ffmpeg.org/download.html y añade la carpeta bin al PATH."
+                hint += (
+                    "\nDescárgalo desde https://ffmpeg.org/download.html "
+                    "y añade la carpeta bin al PATH."
+                )
             else:
                 hint += (
                     "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install ffmpeg"
@@ -495,9 +500,15 @@ class MainWindow(QMainWindow):
             if _is_macos():
                 hint += "\nInstálalo con: brew install chromaprint"
             elif _is_windows():
-                hint += "\nDescárgalo desde https://acoustid.org/chromaprint e incluye la carpeta bin en tu PATH."
+                hint += (
+                    "\nDescárgalo desde https://acoustid.org/chromaprint "
+                    "e incluye la carpeta bin en tu PATH."
+                )
             else:
-                hint += "\nInstálalo con tu gestor de paquetes, por ejemplo: sudo apt install chromaprint"
+                hint += (
+                    "\nInstálalo con tu gestor de paquetes, por ejemplo: "
+                    "sudo apt install chromaprint"
+                )
             return hint
         return f"{tool} no está disponible en tu PATH."
 
@@ -512,7 +523,8 @@ class MainWindow(QMainWindow):
             missing_labels.append("Chromaprint (fpcalc)")
         if not (self._api_key and self._musicbrainz_ua):
             missing_messages.append(
-                "Configura las claves de AcoustID/MusicBrainz desde «Configurar APIs…» para habilitar el enriquecimiento."
+                "Configura las claves de AcoustID/MusicBrainz desde «Configurar APIs…» "
+                "para habilitar el enriquecimiento."
             )
             missing_labels.append("credenciales de AcoustID/MusicBrainz")
 
@@ -583,32 +595,39 @@ class MainWindow(QMainWindow):
         dependency_lines: list[str] = []
         ffmpeg_ok = self._dependency_state.get("ffmpeg", False)
         fpcalc_ok = self._dependency_state.get("fpcalc", False)
-        # fmt: off
-        ffmpeg_text = "✅ listo" if ffmpeg_ok else self._dependency_hint("ffmpeg").replace("\n", "<br/>")
+        if ffmpeg_ok:
+            ffmpeg_text = "✅ listo"
+        else:
+            ffmpeg_text = self._dependency_hint("ffmpeg").replace("\n", "<br/>")
         dependency_lines.append(f"<li><b>ffmpeg</b>: {ffmpeg_text}</li>")
-        fpcalc_text = "✅ listo" if fpcalc_ok else self._dependency_hint("fpcalc").replace("\n", "<br/>")
-        # fmt: on
+        if fpcalc_ok:
+            fpcalc_text = "✅ listo"
+        else:
+            fpcalc_text = self._dependency_hint("fpcalc").replace("\n", "<br/>")
         dependency_lines.append(f"<li><b>Chromaprint (fpcalc)</b>: {fpcalc_text}</li>")
         if self._api_key and self._musicbrainz_ua:
             dependency_lines.append("<li><b>APIs</b>: ✅ credenciales configuradas.</li>")
         else:
             dependency_lines.append(
-                "<li><b>APIs</b>: Configura tu clave de AcoustID y el identificador de MusicBrainz desde «Configurar APIs…».</li>"
+                "<li><b>APIs</b>: Configura tu clave de AcoustID y el "
+                "identificador de MusicBrainz desde «Configurar APIs…».</li>"
             )
 
         dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
-        message = """
+        message = f"""
             <p style="font-size: 15px;">
-                SongSearch Organizer reúne tus herramientas en una sola vista con estética macOS.
+                SongSearch Organizer reúne tus herramientas en una sola vista
+                con estética macOS.
             </p>
             <p><b>Atajos esenciales</b></p>
             {tips}
             <p><b>Estado actual</b></p>
-            {deps}
+            {dependencies}
             <p>
-                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…» para verificar tus credenciales.
+                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…»
+                para verificar tus credenciales.
             </p>
-        """.format(tips=tips, deps=dependencies)
+        """
 
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Centro de ayuda")
