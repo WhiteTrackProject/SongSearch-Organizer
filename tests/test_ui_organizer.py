@@ -9,6 +9,8 @@ import pytest
 pytest.importorskip(
     "PySide6.QtWidgets",
     reason="PySide6 no está disponible o falta libGL.so.1 en el entorno de ejecución",
+    "PySide6.QtGui",
+    reason="Qt runtime with libEGL is required for UI tests",
     exc_type=ImportError,
 )
 
@@ -19,7 +21,12 @@ from songsearch.ui.main_window import MainWindow
 
 @pytest.fixture(scope="session")
 def qapp():
-    from PySide6.QtWidgets import QApplication
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError as exc:
+        raise pytest.SkipTest(
+            "Qt runtime with libEGL is required for UI tests"
+        ) from exc
 
     app = QApplication.instance()
     if app is None:
