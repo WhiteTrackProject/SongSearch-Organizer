@@ -32,8 +32,11 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QKeySequence,
-    QShortcut,
 )
+try:  # PySide6 < 6.7 exports ``QShortcut`` from ``QtWidgets``
+    from PySide6.QtGui import QShortcut
+except ImportError:  # pragma: no cover - fallback for older runtimes
+    from PySide6.QtWidgets import QShortcut  # type: ignore[attr-defined]
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
