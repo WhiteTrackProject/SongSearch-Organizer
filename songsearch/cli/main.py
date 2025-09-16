@@ -176,7 +176,12 @@ def dupes(
 
 
 @app.command()
-def assistant(question: str = typer.Argument(..., help="Pregunta para la ayuda inteligente")) -> None:
+def assistant(
+    question: str = typer.Argument(
+        ...,
+        help="Pregunta para la ayuda inteligente",
+    ),
+) -> None:
     """Consulta la ayuda inteligente basada en ChatGPT."""
 
     from ..ai import assistant as ai_assistant
