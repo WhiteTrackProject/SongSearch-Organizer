@@ -65,7 +65,7 @@ def test_simulate_mb_release_fallback_uses_tags(tmp_path: Path) -> None:
     assert plan == [
         (
             str(audio),
-            str((dest.expanduser().resolve() / "Artist" / "Album" / "07 - Example.mp3")),
+            str(dest.expanduser() / "Artist" / "Album" / "07 - Example.mp3"),
         )
     ]
 
