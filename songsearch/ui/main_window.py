@@ -553,6 +553,9 @@ class MainWindow(QMainWindow):
             "Copiar al portapapeles la ruta de las pistas seleccionadas."
         )
         # fmt: on
+        self._action_copy_default_tip = (
+            "Copiar al portapapeles la ruta de las pistas seleccionadas."
+        )
 
         self._build_ui()
         self._create_actions()
@@ -715,6 +718,8 @@ class MainWindow(QMainWindow):
             missing_messages.append(
                 "Configura las claves de AcoustID/MusicBrainz "
                 "desde «Configurar APIs…» para habilitar el enriquecimiento."
+                "Configura las claves de AcoustID/MusicBrainz desde «Configurar APIs…» "
+                "para habilitar el enriquecimiento."
             )
             missing_labels.append("credenciales de AcoustID/MusicBrainz")
 
@@ -796,6 +801,15 @@ class MainWindow(QMainWindow):
             else self._dependency_hint("fpcalc").replace("\n", "<br/>")
         )
         # fmt: on
+        if ffmpeg_ok:
+            ffmpeg_text = "✅ listo"
+        else:
+            ffmpeg_text = self._dependency_hint("ffmpeg").replace("\n", "<br/>")
+        dependency_lines.append(f"<li><b>ffmpeg</b>: {ffmpeg_text}</li>")
+        if fpcalc_ok:
+            fpcalc_text = "✅ listo"
+        else:
+            fpcalc_text = self._dependency_hint("fpcalc").replace("\n", "<br/>")
         dependency_lines.append(f"<li><b>Chromaprint (fpcalc)</b>: {fpcalc_text}</li>")
         if self._api_key and self._musicbrainz_ua:
             dependency_lines.append("<li><b>APIs</b>: ✅ credenciales configuradas.</li>")
@@ -844,7 +858,74 @@ class MainWindow(QMainWindow):
             dialog.show_feedback("")
             dialog.set_loading(False)
         dialog.focus_prompt()
+                "<li><b>APIs</b>: Configura tu clave de AcoustID y el "
+                "identificador de MusicBrainz desde «Configurar APIs…».</li>"
+            )
+
+        dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
+        message = f"""
+            <p style="font-size: 15px;">
+                SongSearch Organizer reúne tus herramientas en una sola vista
+                con estética macOS.
+            </p>
+            <p><b>Atajos esenciales</b></p>
+            {tips}
+            <p><b>Estado actual</b></p>
+            {dependencies}
+            <p>
+                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…»
+                para verificar tus credenciales.
+            </p>
+        """
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Centro de ayuda")
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setTextFormat(Qt.RichText)
+        dialog.setText(message)
+        dialog.setStandardButtons(QMessageBox.Close)
         dialog.exec()
+
+    def _help_send(self, question: str) -> None:
+        """Send *question* to the AI helper while handling missing credentials."""
+
+        prompt = question.strip()
+        if not prompt:
+            QMessageBox.information(
+                self,
+                "Pregunta vacía",
+                "Escribe una pregunta antes de consultar a ChatGPT.",
+            )
+            return
+
+        from ..ai import assistant as ai_assistant
+
+        try:
+            answer = ai_assistant.ask_for_help(prompt)
+        except ai_assistant.MissingAPIKeyError:
+            message = "Configura OPENAI_API_KEY para usar ChatGPT"
+            QMessageBox.information(self, "ChatGPT no disponible", message)
+            if self._status:
+                self._status.showMessage(message, 8000)
+            return
+        except Exception as exc:  # noqa: BLE001 - mostrar retroalimentación al usuario
+            logger.exception("No se pudo obtener ayuda inteligente: %s", exc)
+            QMessageBox.critical(
+                self,
+                "Error en ChatGPT",
+                f"No se pudo obtener respuesta de ChatGPT.\n\n{exc}",
+            )
+            return
+
+        if not answer:
+            QMessageBox.information(
+                self,
+                "Respuesta vacía",
+                "ChatGPT no devolvió ninguna sugerencia. Intenta reformular la consulta.",
+            )
+            return
+
+        QMessageBox.information(self, "ChatGPT", answer)
 
     def _show_about_dialog(self) -> None:  # pragma: no cover - UI dialog
         message = (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Application look & feel helpers.
 
 This module centralises the custom Qt style sheet used by the desktop user
@@ -9,6 +7,8 @@ keeps the logic simple: applying the style means configuring a dark palette and
 attaching a single Qt style sheet, while widgets that should honour the themed
 background can opt-in via :func:`ensure_styled_background`.
 """
+
+from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette

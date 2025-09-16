@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from rich.logging import RichHandler
 from rich.table import Table
 
+from ..ai_assistant import ask_chat
 from ..core.db import connect, init_db
 from ..core.duplicates import find_duplicates, resolve_move_others
 from ..core.metadata_enricher import enrich_db
@@ -130,6 +131,16 @@ def enrich(
 
 
 @app.command()
+def chat(prompt: str = typer.Argument(..., help="Pregunta para la ayuda inteligente.")) -> None:
+    try:
+        answer = ask_chat(prompt)
+    except RuntimeError as exc:  # pragma: no cover - CLI error path
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(answer)
+
+
+@app.command()
 def dupes(
     move_to: str = typer.Option(
         "", "--move-to", help="Si se indica, mueve duplicados (excepto el mejor) a esta carpeta"
@@ -162,6 +173,30 @@ def dupes(
             applied = resolve_move_others(con, g, dest)
             total += len(applied)
         logger.info("Movidos %d duplicados a %s", total, dest)
+
+
+@app.command()
+def assistant(question: str = typer.Argument(..., help="Pregunta para la ayuda inteligente")) -> None:
+    """Consulta la ayuda inteligente basada en ChatGPT."""
+
+    from ..ai import assistant as ai_assistant
+
+    try:
+        answer = ai_assistant.ask_for_help(question)
+    except ai_assistant.MissingAPIKeyError:
+        typer.secho("Configura OPENAI_API_KEY para usar ChatGPT", fg=typer.colors.YELLOW)
+        return
+    except Exception as exc:  # noqa: BLE001 - informar del fallo y mantener código de error
+        logger.exception("No se pudo obtener ayuda de ChatGPT: %s", exc)
+        raise typer.Exit(code=1) from exc
+
+    if answer:
+        typer.echo(answer)
+    else:
+        typer.secho(
+            "La respuesta de ChatGPT llegó vacía. Intenta reformular tu pregunta.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _load_template(name: str) -> str:
