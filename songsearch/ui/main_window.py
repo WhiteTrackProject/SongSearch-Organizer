@@ -76,6 +76,12 @@ logger = logging.getLogger(__name__)
 
 _ICON_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
 
+_HELP_MODULE_CANDIDATES: tuple[str, ...] = (
+    "songsearch.core.help_center",
+    "songsearch.core.help",
+    "songsearch.core.assistant",
+)
+
 
 def _load_icon(name: str) -> QIcon:
     """Return a ``QIcon`` for *name* if the asset exists."""
@@ -960,14 +966,9 @@ class MainWindow(QMainWindow):
         if cached is not None:
             return cached
 
-        candidates = (
-            "songsearch.core.help_center",
-            "songsearch.core.help",
-            "songsearch.core.assistant",
-        )
         searched_modules: list[str] = []
         last_error: Exception | None = None
-        for module_name in candidates:
+        for module_name in _HELP_MODULE_CANDIDATES:
             try:
                 module = importlib.import_module(module_name)
             except ModuleNotFoundError:
