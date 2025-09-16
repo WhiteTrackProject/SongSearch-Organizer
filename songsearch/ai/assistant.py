@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Mapping, MutableSequence, Sequence
+from collections.abc import Mapping, MutableSequence, Sequence
+from typing import Any
 
 _DEFAULT_MODEL = "gpt-4o-mini"
 _SYSTEM_PROMPT = (
@@ -97,5 +98,9 @@ def ask_for_help(
     client = _client()
     selected_model = (model or os.getenv("OPENAI_MODEL", "").strip()) or _DEFAULT_MODEL
     messages = _prepare_messages(question, history)
-    completion = client.chat.completions.create(model=selected_model, messages=messages, temperature=0.2)
+    completion = client.chat.completions.create(
+        model=selected_model,
+        messages=messages,
+        temperature=0.2,
+    )
     return _extract_text(completion)
