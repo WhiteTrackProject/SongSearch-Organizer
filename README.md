@@ -1,4 +1,4 @@
-# SongSearch Organizer (v0.3.2)
+# SongSearch Organizer (v0.3.3)
 
 ![Coverage](assets/coverage-badge.svg)
 
@@ -29,7 +29,7 @@ La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entre versiones.
 
-## ✨ Características (MVP v0.3.2)
+## ✨ Características (MVP v0.3.3)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
@@ -100,11 +100,12 @@ pip install .[dev]
 
 ## ⚙️ Configuración rápida
 
-Crea `.env` en la raíz con tus claves:
+Crea `.env` en la raíz con tus claves (AcoustID, OpenAI y MusicBrainz):
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.2 (tu_email@ejemplo.com)
+OPENAI_API_KEY=tu_api_key_de_openai
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.3 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
 
@@ -112,7 +113,17 @@ SPEK_APP_PATH=
 
 ## 🧠 Ayuda inteligente
 
-La ayuda inteligente usa el modelo `gpt-4o-mini` de OpenAI por defecto. Si prefieres otro modelo compatible, define `OPENAI_MODEL` en tu `.env` (o en tu entorno de ejecución) con el identificador deseado:
+La ayuda inteligente integra un asistente contextual que responde sobre SongSearch Organizer y automatiza consultas frecuentes. Una vez configurado `OPENAI_API_KEY`, puedes utilizar la CLI en modo conversación o con respuestas guiadas:
+
+```bash
+# Chat libre con contexto musical
+songsearch chat "Necesito ideas para ordenar mis álbumes en FLAC"
+
+# Preguntas directas al asistente experto de SongSearch
+songsearch assistant "¿Cómo escribo etiquetas usando el modo enrich?"
+```
+
+Ambos comandos usan el modelo `gpt-4o-mini` de OpenAI por defecto. Si prefieres otro modelo compatible, define `OPENAI_MODEL` en tu `.env` (o en tu entorno de ejecución) con el identificador deseado:
 
 ```ini
 OPENAI_MODEL=gpt-4.1-mini
