@@ -7,17 +7,17 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QFrame,
 )
 
 from ..core.db import connect, get_by_path
