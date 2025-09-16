@@ -15,7 +15,7 @@ pipx install songsearch-organizer
 songsearch --help
 ```
 
-> ℹ️ SongSearch Organizer requiere **Python 3.12** (`>=3.12,<3.13`). Si utilizas un intérprete sin el
+> ℹ️ SongSearch Organizer requiere **Python 3.12 o 3.13** (`>=3.12,<3.14`). Si utilizas un intérprete sin el
 > módulo estándar `aifc`, la app avisará y omitirá los archivos `.aif/.aiff`, manteniendo el
 > procesamiento de los demás formatos compatibles.
 
@@ -68,7 +68,7 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entr
 
 ## 🧱 Stack
 
-- **Python 3.12.x** (`>=3.12,<3.13`)
+- **Python 3.12.x o 3.13.x** (`>=3.12,<3.14`)
 - **SQLite + FTS5** (búsqueda full-text rápida)
 - **mutagen** (tags), **watchdog** (cambios en disco)
 - **pyacoustid** + `fpcalc` (Chromaprint)
@@ -76,21 +76,33 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entr
 - **ffmpeg** (espectrograma)
 - **PySide6** (UI)
 
+### Compatibilidad de dependencias con Python 3.13
+
+Revisamos los metadatos publicados en PyPI para las dependencias de tiempo de ejecución fijadas en `pyproject.toml`:
+
+- `mutagen 1.47.0`, `tqdm 4.67.1` y `typer 0.17.4` declaran `python_requires >=3.7`, por lo que se instalan sin restricciones en Python 3.13.
+- `watchdog 6.0.0`, `python-dotenv 1.1.1`, `rich 14.1.0`, `pydantic 2.11.9` y `PyYAML 6.0.2` ya incluyen clasificadores explícitos para Python 3.13 además de exigir `>=3.8/3.9`.
+- `PySide6 6.9.2` fija `python_requires >=3.9,<3.14`, alineado con el nuevo rango soportado por la aplicación.
+- `openai` (serie 1.x, actualmente 1.107.3) declara compatibilidad con Python 3.13 y mantiene `python_requires >=3.8`.
+- `ffmpeg-python 0.2.0` y `pyacoustid 1.3.0` no incluyen `python_requires` actualizado, pero pip los instala en 3.13; seguimos atentos por si aparece un fork o versión con metadatos renovados.
+- `musicbrainzngs 0.7.1` mantiene `python_requires >=2.7` (excluyendo solo Python 3.0–3.3), por lo que cubre también Python 3.13.
+
 ---
 
 ## 📦 Requisitos del sistema (macOS)
 
 1) Instala dependencias nativas:
 ```bash
-brew install python@3.12 ffmpeg chromaprint sqlite
+brew install python@3.13 ffmpeg chromaprint sqlite
+# (o usa python@3.12 si todavía no migras)
 ```
 
 2) Crea entorno virtual + activa:
 
 ```bash
-python3.12 -m venv .venv
+python3.13 -m venv .venv   # o python3.12
 source .venv/bin/activate
-python --version   # debe mostrar 3.12.x
+python --version   # debe mostrar 3.12.x o 3.13.x
 ```
 
 3) Instala dependencias Python:
@@ -205,7 +217,7 @@ reglas:
 
 ¿Nunca has lanzado una app de Python? Sigue estos pasos sencillos:
 
-1. **Instala Python 3.12** desde [python.org](https://www.python.org/downloads/) y, durante la instalación en Windows, marca "Add Python to PATH".
+1. **Instala Python 3.12 o 3.13** desde [python.org](https://www.python.org/downloads/) y, durante la instalación en Windows, marca "Add Python to PATH".
 2. **Descarga el proyecto**: `git clone https://github.com/tu-usuario/SongSearch-Organizer.git` o baja el ZIP y descomprímelo.
 3. **Abre una terminal** (Terminal en macOS/Linux o PowerShell en Windows) y ve a la carpeta del proyecto: `cd SongSearch-Organizer`.
 4. **Crea un entorno aislado**: `python -m venv .venv`.
