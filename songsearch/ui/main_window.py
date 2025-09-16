@@ -451,8 +451,8 @@ class ApiCredentialsDialog(QDialog):
                 self,
                 "Faltan datos",
                 (
-                    "Debes introducir tanto la clave de AcoustID "
-                    "como tu cuenta/contacto de MusicBrainz."
+                    "Debes introducir tanto la clave de AcoustID como tu "
+                    "cuenta/contacto de MusicBrainz."
                 ),
             )
             return
