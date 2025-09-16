@@ -28,6 +28,24 @@
         {
           "type": "python",
           "path": "songsearch/__init__.py"
+        },
+        {
+          "type": "plain",
+          "path": "README.md",
+          "regex": "^# SongSearch Organizer \\(v\\d+\\.\\d+\\.\\d+\\)$",
+          "replacer": "# SongSearch Organizer (v{{version}})"
+        },
+        {
+          "type": "plain",
+          "path": "README.md",
+          "regex": "^## ✨ Características \\(MVP v\\d+\\.\\d+\\.\\d+\\)$",
+          "replacer": "## ✨ Características (MVP v{{version}})"
+        },
+        {
+          "type": "plain",
+          "path": "README.md",
+          "regex": "^MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/\\d+\\.\\d+\\.\\d+ \\(tu_email@ejemplo.com\\)$",
+          "replacer": "MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/{{version}} (tu_email@ejemplo.com)"
         }
       ]
     }
