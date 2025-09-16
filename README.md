@@ -110,6 +110,16 @@ SPEK_APP_PATH=
 
 > ℹ️ `.env` está en `.gitignore`; guarda aquí tus claves sin riesgo de subirlas al repositorio.
 
+## 🧠 Ayuda inteligente
+
+La ayuda inteligente usa el modelo `gpt-4o-mini` de OpenAI por defecto. Si prefieres otro modelo compatible, define `OPENAI_MODEL` en tu `.env` (o en tu entorno de ejecución) con el identificador deseado:
+
+```ini
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Si omites la variable, el sistema mantendrá el modelo predeterminado.
+
 **Plantillas de organización** (`config/templates.yml`):
 
 ```yaml
