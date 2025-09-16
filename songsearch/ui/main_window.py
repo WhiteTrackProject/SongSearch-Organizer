@@ -7,7 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPushButton,
+    QShortcut,
     QSplitter,
     QStatusBar,
     QTableView,
@@ -334,6 +335,25 @@ class MainWindow(QMainWindow):
         self._btn_spectrum: QPushButton | None = None
         self._btn_config: QPushButton | None = None
         self._scan_worker: _ScanWorker | None = None
+        self._summary_badge: QLabel | None = None
+        self._help_button: QPushButton | None = None
+        self._table_caption: QLabel | None = None
+        self._inspector_caption: QLabel | None = None
+        self._shortcuts: list[QShortcut] = []
+        self._action_configure_api: QAction | None = None
+        self._action_scan: QAction | None = None
+        self._action_open_track: QAction | None = None
+        self._action_reveal_track: QAction | None = None
+        self._action_exit: QAction | None = None
+        self._action_copy_paths: QAction | None = None
+        self._action_focus_search: QAction | None = None
+        self._action_clear_search: QAction | None = None
+        self._action_select_all: QAction | None = None
+        self._action_refresh: QAction | None = None
+        self._action_enrich: QAction | None = None
+        self._action_spectrum: QAction | None = None
+        self._action_help_overview: QAction | None = None
+        self._action_about: QAction | None = None
 
         self._action_configure_api: QAction | None = None
         self._action_scan: QAction | None = None
@@ -358,6 +378,9 @@ class MainWindow(QMainWindow):
         self._create_actions()
 
         self._build_ui()
+        self._create_actions()
+        self._build_menus()
+        self._setup_shortcuts()
         self._refresh_dependency_state()
         self.refresh_results()
         QTimer.singleShot(0, self._handle_startup_prompts)
@@ -527,6 +550,156 @@ class MainWindow(QMainWindow):
     def _open_api_settings(self) -> None:
         self._maybe_prompt_api_credentials(force=True)
 
+    def _setup_shortcuts(self) -> None:
+        for shortcut in self._shortcuts:
+            shortcut.setParent(None)
+        self._shortcuts.clear()
+
+        combos: list[tuple[QKeySequence, Callable[[], None]]] = []
+        if self._action_focus_search is None:
+            combos.append((QKeySequence.Find, self._focus_search))
+        if self._action_refresh is None:
+            combos.append((QKeySequence.Refresh, self.refresh_results))
+        for sequence, handler in combos:
+            shortcut = QShortcut(sequence, self)
+            shortcut.activated.connect(handler)
+            self._shortcuts.append(shortcut)
+
+    def _focus_search(self) -> None:
+        self._search.setFocus(Qt.ShortcutFocusReason)
+        self._search.selectAll()
+
+    def _clear_search(self) -> None:
+        if not self._search.text():
+            return
+        self._search_timer.stop()
+        self._search.clear()
+        self.refresh_results()
+        self._focus_search()
+        self._update_action_state()
+
+    def _select_all_rows(self) -> None:
+        self._table.setFocus(Qt.ShortcutFocusReason)
+        self._table.selectAll()
+
+    def _open_help_center(self) -> None:  # pragma: no cover - UI dialog
+        self._refresh_dependency_state()
+
+        tips = """
+        <ul>
+            <li><b>⌘F / Ctrl+F</b> enfoca la búsqueda instantáneamente.</li>
+            <li><b>Enter</b> ejecuta la consulta actual.</li>
+            <li><b>Doble clic</b> abre la pista seleccionada con tu reproductor predeterminado.</li>
+            <li><b>Clic derecho</b> muestra acciones rápidas sobre la fila.</li>
+        </ul>
+        """.strip()
+
+        dependency_lines: list[str] = []
+        ffmpeg_ok = self._dependency_state.get("ffmpeg", False)
+        fpcalc_ok = self._dependency_state.get("fpcalc", False)
+        ffmpeg_text = "✅ listo" if ffmpeg_ok else self._dependency_hint("ffmpeg").replace("\n", "<br/>")
+        dependency_lines.append(f"<li><b>ffmpeg</b>: {ffmpeg_text}</li>")
+        fpcalc_text = "✅ listo" if fpcalc_ok else self._dependency_hint("fpcalc").replace("\n", "<br/>")
+        dependency_lines.append(f"<li><b>Chromaprint (fpcalc)</b>: {fpcalc_text}</li>")
+        if self._api_key and self._musicbrainz_ua:
+            dependency_lines.append("<li><b>APIs</b>: ✅ credenciales configuradas.</li>")
+        else:
+            dependency_lines.append(
+                "<li><b>APIs</b>: Configura tu clave de AcoustID y el identificador de MusicBrainz desde «Configurar APIs…».</li>"
+            )
+
+        dependencies = "<ul>" + "".join(dependency_lines) + "</ul>"
+        message = """
+            <p style="font-size: 15px;">
+                SongSearch Organizer reúne tus herramientas en una sola vista con estética macOS.
+            </p>
+            <p><b>Atajos esenciales</b></p>
+            {tips}
+            <p><b>Estado actual</b></p>
+            {deps}
+            <p>
+                Necesitas más ayuda? Revisa el README o pulsa «Configurar APIs…» para verificar tus credenciales.
+            </p>
+        """.format(tips=tips, deps=dependencies)
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Centro de ayuda")
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setTextFormat(Qt.RichText)
+        dialog.setText(message)
+        dialog.setStandardButtons(QMessageBox.Close)
+        dialog.exec()
+
+    def _show_about_dialog(self) -> None:  # pragma: no cover - UI dialog
+        message = (
+            "<p><b>SongSearch Organizer</b></p>"
+            f"<p>Versión {__version__}</p>"
+            "<p>Gestiona, busca y enriquece tu biblioteca musical con AcoustID y MusicBrainz.</p>"
+        )
+        QMessageBox.about(self, "Acerca de SongSearch Organizer", message)
+
+    def _update_summary_badge(self, *, shown: int, total: int, truncated: bool) -> None:
+        if self._summary_badge is None:
+            return
+        if total <= 0:
+            self._summary_badge.setText("Sin resultados")
+            self._summary_badge.setToolTip("Escanea tu biblioteca o escribe en la búsqueda para empezar.")
+            return
+        if shown == total and not truncated:
+            self._summary_badge.setText(f"{total} pistas")
+        else:
+            self._summary_badge.setText(f"{shown} / {total} pistas")
+        if truncated:
+            self._summary_badge.setToolTip(f"Mostrando los primeros {shown} resultados de {total} disponibles.")
+        else:
+            self._summary_badge.setToolTip("")
+
+    def _update_table_caption(
+        self,
+        *,
+        query_text: str,
+        shown: int,
+        total: int,
+        truncated: bool,
+        elapsed_ms: float,
+    ) -> None:
+        if self._table_caption is None:
+            return
+        if total == 0:
+            if query_text:
+                self._table_caption.setText("Sin coincidencias para tu búsqueda")
+            else:
+                self._table_caption.setText("Escanea una carpeta para poblar la biblioteca")
+            self._table_caption.setToolTip("")
+            return
+        base = f"{shown} pistas" if shown == total else f"{shown}/{total} pistas"
+        if truncated:
+            base += " · vista limitada"
+        self._table_caption.setText(f"{base} · {elapsed_ms:.0f} ms")
+        if query_text:
+            self._table_caption.setToolTip(f"Filtro activo: {query_text}")
+        else:
+            self._table_caption.setToolTip("")
+
+    def _update_inspector_caption(self, record: Mapping[str, Any] | None) -> None:
+        if self._inspector_caption is None:
+            return
+        if not record:
+            self._inspector_caption.setText("Selecciona una pista para ver sus metadatos")
+            self._inspector_caption.setToolTip("")
+            return
+        title = str(record.get("title") or "")
+        path_value = record.get("path")
+        if not title:
+            if isinstance(path_value, str):
+                title = Path(path_value).stem
+        artist = record.get("artist")
+        subtitle = title if title else "Pista seleccionada"
+        if artist:
+            subtitle = f"{subtitle} — {artist}"
+        self._inspector_caption.setText(subtitle)
+        self._inspector_caption.setToolTip(subtitle)
+
     # ------------------------------------------------------------------
     # UI setup
     # ------------------------------------------------------------------
@@ -618,15 +791,54 @@ class MainWindow(QMainWindow):
 
         header = QWidget(central)
         header.setObjectName("HeaderBar")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 24, 24, 12)
-        header_layout.setSpacing(16)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(32, 32, 32, 24)
+        header_layout.setSpacing(20)
 
-        search_container = QWidget(header)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(16)
+
+        title_block = QVBoxLayout()
+        title_block.setContentsMargins(0, 0, 0, 0)
+        title_block.setSpacing(2)
+
+        title_label = QLabel("SongSearch Organizer", header)
+        title_label.setObjectName("HeaderTitle")
+        title_block.addWidget(title_label)
+
+        subtitle_label = QLabel("Colección musical con inspiración macOS", header)
+        subtitle_label.setObjectName("HeaderSubtitle")
+        subtitle_label.setWordWrap(True)
+        title_block.addWidget(subtitle_label)
+
+        title_row.addLayout(title_block)
+        title_row.addStretch(1)
+
+        self._summary_badge = QLabel("Sin resultados", header)
+        self._summary_badge.setObjectName("SummaryBadge")
+        title_row.addWidget(self._summary_badge, 0, Qt.AlignVCenter)
+
+        self._help_button = QPushButton(_load_icon("help.png"), "Centro de ayuda", header)
+        self._help_button.setObjectName("HelpButton")
+        self._help_button.setProperty("helpButton", True)
+        self._help_button.clicked.connect(self._open_help_center)
+        title_row.addWidget(self._help_button, 0, Qt.AlignVCenter)
+
+        header_layout.addLayout(title_row)
+
+        toolbar_frame = QFrame(header)
+        toolbar_frame.setObjectName("ToolbarCard")
+        ensure_styled_background(toolbar_frame)
+        toolbar_layout = QHBoxLayout(toolbar_frame)
+        toolbar_layout.setContentsMargins(20, 16, 20, 16)
+        toolbar_layout.setSpacing(18)
+
+        search_container = QWidget(toolbar_frame)
         search_container.setObjectName("SearchContainer")
         search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(0, 0, 0, 0)
-        search_layout.setSpacing(10)
+        search_layout.setContentsMargins(12, 0, 12, 0)
+        search_layout.setSpacing(12)
 
         self._search.setPlaceholderText("Buscar título, artista, álbum, género o ruta…")
         self._search.setClearButtonEnabled(True)
@@ -635,37 +847,47 @@ class MainWindow(QMainWindow):
         self._search.returnPressed.connect(self.refresh_results)
         search_layout.addWidget(self._search, 1)
 
-        search_hint = QLabel("↵ ejecutar", search_container)
+        search_hint = QLabel("⌘F / Ctrl+F", search_container)
         search_hint.setObjectName("SearchHint")
-        search_layout.addWidget(search_hint)
+        search_layout.addWidget(search_hint, 0, Qt.AlignVCenter)
 
-        header_layout.addWidget(search_container, 1, Qt.AlignVCenter)
+        toolbar_layout.addWidget(search_container, 1)
 
-        actions_container = QWidget(header)
+        actions_container = QWidget(toolbar_frame)
         actions_container.setObjectName("HeaderActions")
         actions_layout = QHBoxLayout(actions_container)
         actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.setSpacing(8)
+        actions_layout.setSpacing(12)
 
         self._btn_config = QPushButton(_load_icon("settings.png"), "Configurar APIs…", actions_container)
+        self._btn_config.setProperty("toolbarButton", True)
         self._btn_config.clicked.connect(self._open_api_settings)
         actions_layout.addWidget(self._btn_config)
 
         self._btn_scan = QPushButton(_load_icon("scan.png"), "Escanear…", actions_container)
+        self._btn_scan.setProperty("toolbarButton", True)
         self._btn_scan.clicked.connect(self._open_scan_dialog)
         actions_layout.addWidget(self._btn_scan)
 
         self._btn_enrich = QPushButton(_load_icon("enrich.png"), "Enriquecer", actions_container)
+        self._btn_enrich.setProperty("toolbarButton", True)
         self._btn_enrich.clicked.connect(self._enrich_selected)
         self._btn_enrich.setEnabled(False)
         actions_layout.addWidget(self._btn_enrich)
 
         self._btn_spectrum = QPushButton(_load_icon("spectrum.png"), "Espectro", actions_container)
+        self._btn_spectrum.setProperty("toolbarButton", True)
         self._btn_spectrum.clicked.connect(self._generate_spectrum_selected)
         self._btn_spectrum.setEnabled(False)
         actions_layout.addWidget(self._btn_spectrum)
 
-        header_layout.addWidget(actions_container, 0, Qt.AlignRight | Qt.AlignVCenter)
+        toolbar_layout.addWidget(actions_container, 0)
+
+        for button in (self._btn_config, self._btn_scan, self._btn_enrich, self._btn_spectrum, self._help_button):
+            if button is not None:
+                button.setCursor(Qt.PointingHandCursor)
+
+        header_layout.addWidget(toolbar_frame)
         layout.addWidget(header)
 
         splitter = QSplitter(Qt.Horizontal, central)
@@ -676,8 +898,22 @@ class MainWindow(QMainWindow):
         table_card.setObjectName("TableCard")
         ensure_styled_background(table_card)
         table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(18, 18, 18, 18)
-        table_layout.setSpacing(0)
+        table_layout.setContentsMargins(20, 20, 20, 20)
+        table_layout.setSpacing(12)
+
+        table_header = QVBoxLayout()
+        table_header.setContentsMargins(0, 0, 0, 0)
+        table_header.setSpacing(2)
+        table_title = QLabel("Biblioteca", table_card)
+        table_title.setObjectName("CardTitle")
+        table_header.addWidget(table_title)
+
+        self._table_caption = QLabel("Escanea una carpeta para poblar la biblioteca", table_card)
+        self._table_caption.setObjectName("CardSubtitle")
+        self._table_caption.setWordWrap(True)
+        table_header.addWidget(self._table_caption)
+
+        table_layout.addLayout(table_header)
 
         self._table.setModel(self._model)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -700,9 +936,23 @@ class MainWindow(QMainWindow):
         details_card.setObjectName("DetailsCard")
         ensure_styled_background(details_card)
         details_layout = QVBoxLayout(details_card)
-        details_layout.setContentsMargins(18, 18, 18, 18)
-        details_layout.setSpacing(0)
-        details_layout.addWidget(self._details)
+        details_layout.setContentsMargins(20, 20, 20, 20)
+        details_layout.setSpacing(12)
+
+        inspector_header = QVBoxLayout()
+        inspector_header.setContentsMargins(0, 0, 0, 0)
+        inspector_header.setSpacing(2)
+        inspector_title = QLabel("Inspector", details_card)
+        inspector_title.setObjectName("CardTitle")
+        inspector_header.addWidget(inspector_title)
+
+        self._inspector_caption = QLabel("Selecciona una pista para ver sus metadatos", details_card)
+        self._inspector_caption.setObjectName("CardSubtitle")
+        self._inspector_caption.setWordWrap(True)
+        inspector_header.addWidget(self._inspector_caption)
+
+        details_layout.addLayout(inspector_header)
+        details_layout.addWidget(self._details, 1)
 
         for card in (table_card, details_card):
             shadow = QGraphicsDropShadowEffect(card)
@@ -729,6 +979,109 @@ class MainWindow(QMainWindow):
         if selection_model is not None:
             selection_model.selectionChanged.connect(self._on_selection_changed)
 
+        codex/redesign-app-interface-for-macos-style
+        self._update_summary_badge(shown=0, total=0, truncated=False)
+        self._update_table_caption(
+            query_text="",
+            shown=0,
+            total=0,
+            truncated=False,
+            elapsed_ms=0.0,
+        )
+        self._update_inspector_caption(None)
+
+    def _create_actions(self) -> None:
+        self._action_configure_api = QAction(_load_icon("settings.png"), "Configurar APIs…", self)
+        self._action_configure_api.setShortcut(QKeySequence(QKeySequence.StandardKey.Preferences))
+        self._action_configure_api.setStatusTip("Define las credenciales de AcoustID y MusicBrainz.")
+        self._action_configure_api.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self._action_configure_api.triggered.connect(self._open_api_settings)
+
+        self._action_scan = QAction(_load_icon("scan.png"), "Escanear…", self)
+        self._action_scan.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        self._action_scan.setStatusTip("Explora una carpeta y añade sus pistas a la biblioteca.")
+        self._action_scan.triggered.connect(self._open_scan_dialog)
+
+        self._action_open_track = QAction(_load_icon("open.png"), "Abrir", self)
+        self._action_open_track.setShortcut(QKeySequence(QKeySequence.StandardKey.Open))
+        self._action_open_track.setStatusTip("Reproduce la pista seleccionada con la aplicación predeterminada.")
+        self._action_open_track.triggered.connect(self._open_selected_track)
+
+        self._action_reveal_track = QAction(_load_icon("reveal.png"), "Mostrar en carpeta", self)
+        self._action_reveal_track.setShortcut(QKeySequence("Ctrl+Shift+R"))
+        self._action_reveal_track.setStatusTip("Abre el explorador de archivos en la ubicación de la pista.")
+        self._action_reveal_track.triggered.connect(self._reveal_selected_track)
+
+        self._action_exit = QAction("Salir", self)
+        self._action_exit.setShortcut(QKeySequence(QKeySequence.StandardKey.Quit))
+        self._action_exit.setMenuRole(QAction.MenuRole.QuitRole)
+        self._action_exit.triggered.connect(self.close)
+
+        self._action_copy_paths = QAction(_load_icon("copy.png"), "Copiar ruta", self)
+        self._action_copy_paths.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        self._action_copy_paths.setStatusTip("Copia la ruta de la pista al portapapeles.")
+        self._action_copy_paths.triggered.connect(self._copy_selected_paths)
+
+        self._action_focus_search = QAction("Buscar", self)
+        self._action_focus_search.setShortcut(QKeySequence(QKeySequence.StandardKey.Find))
+        self._action_focus_search.setStatusTip("Enfoca el cuadro de búsqueda.")
+        self._action_focus_search.triggered.connect(self._focus_search)
+
+        self._action_clear_search = QAction("Limpiar búsqueda", self)
+        self._action_clear_search.setShortcut(QKeySequence("Esc"))
+        self._action_clear_search.setStatusTip("Limpia el texto de búsqueda actual.")
+        self._action_clear_search.triggered.connect(self._clear_search)
+
+        self._action_select_all = QAction("Seleccionar todo", self)
+        self._action_select_all.setShortcut(QKeySequence(QKeySequence.StandardKey.SelectAll))
+        self._action_select_all.setStatusTip("Selecciona todas las filas visibles.")
+        self._action_select_all.triggered.connect(self._select_all_rows)
+
+        self._action_refresh = QAction(_load_icon("refresh.png"), "Actualizar resultados", self)
+        self._action_refresh.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
+        self._action_refresh.setStatusTip("Vuelve a ejecutar la búsqueda actual.")
+        self._action_refresh.triggered.connect(self.refresh_results)
+
+        self._action_enrich = QAction(_load_icon("enrich.png"), "Enriquecer", self)
+        self._action_enrich.setShortcut(QKeySequence("Ctrl+E"))
+        self._action_enrich.setStatusTip("Busca metadatos en AcoustID y MusicBrainz.")
+        self._action_enrich.triggered.connect(self._enrich_selected)
+
+        self._action_spectrum = QAction(_load_icon("spectrum.png"), "Espectro", self)
+        self._action_spectrum.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        self._action_spectrum.setStatusTip("Genera el espectro de la pista seleccionada.")
+        self._action_spectrum.triggered.connect(self._generate_spectrum_selected)
+
+        self._action_help_overview = QAction(_load_icon("help.png"), "Centro de ayuda", self)
+        self._action_help_overview.setShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents))
+        self._action_help_overview.setStatusTip("Descubre atajos, dependencias y consejos de uso.")
+        self._action_help_overview.setMenuRole(QAction.MenuRole.HelpRole)
+        self._action_help_overview.triggered.connect(self._open_help_center)
+
+        self._action_about = QAction("Acerca de SongSearch Organizer", self)
+        self._action_about.setMenuRole(QAction.MenuRole.AboutRole)
+        self._action_about.triggered.connect(self._show_about_dialog)
+
+        for action in (
+            self._action_configure_api,
+            self._action_scan,
+            self._action_open_track,
+            self._action_reveal_track,
+            self._action_exit,
+            self._action_copy_paths,
+            self._action_focus_search,
+            self._action_clear_search,
+            self._action_select_all,
+            self._action_refresh,
+            self._action_enrich,
+            self._action_spectrum,
+            self._action_help_overview,
+            self._action_about,
+        ):
+            if action is not None:
+                self.addAction(action)
+
+        self._update_action_state()
     def _build_menus(self) -> None:
         menu_bar: QMenuBar = self.menuBar()
         menu_bar.clear()
@@ -821,6 +1174,7 @@ class MainWindow(QMainWindow):
         if self._action_scan is not None:
             self._action_scan.setEnabled(True)
         self._scan_worker = None
+        self._update_action_state()
 
     def _on_scan_finished(self, directory: Path) -> None:
         self._status.showMessage(f"Escaneo completado: {directory}", 5000)
@@ -980,6 +1334,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _on_search_text_changed(self, _: str) -> None:
         self._search_timer.start()
+        self._update_action_state()
 
     def _on_selection_changed(
         self, selected: QItemSelection, _: QItemSelection
@@ -987,6 +1342,7 @@ class MainWindow(QMainWindow):
         if not selected.indexes():
             self._current_path = None
             self._details.clear_details()
+            self._update_inspector_caption(None)
             self._update_action_state()
             return
         index = selected.indexes()[0]
@@ -994,14 +1350,17 @@ class MainWindow(QMainWindow):
         if not data:
             self._current_path = None
             self._details.clear_details()
+            self._update_inspector_caption(None)
             self._update_action_state()
             return
         path = data.get("path")
         self._current_path = path if isinstance(path, str) else None
         if self._current_path:
             self._details.show_for_path(self._current_path, record=data)
+            self._update_inspector_caption(data)
         else:
             self._details.clear_details()
+            self._update_inspector_caption(None)
         self._update_action_state()
 
     # ------------------------------------------------------------------
@@ -1060,10 +1419,19 @@ class MainWindow(QMainWindow):
             search_hint=search_hint,
         )
         self._status.showMessage(message)
+        self._update_summary_badge(shown=shown, total=total, truncated=truncated)
+        self._update_table_caption(
+            query_text=query_text,
+            shown=shown,
+            total=total,
+            truncated=truncated,
+            elapsed_ms=elapsed_ms,
+        )
 
         if shown == 0:
             self._details.clear_details()
             self._current_path = None
+            self._update_inspector_caption(None)
         self._update_action_state()
 
     def _format_status_message(
@@ -1161,23 +1529,61 @@ class MainWindow(QMainWindow):
 
     def _update_action_state(self) -> None:
         has_selection = bool(self._current_path)
+        codex/redesign-app-interface-for-macos-style
+        has_rows = self._model.rowCount() > 0 if self._model is not None else False
+        search_has_text = bool(self._search.text())
+        enable_enrich = has_selection and self._can_enrich_metadata
+        enrich_hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
+        enable_spectrum = has_selection and self._can_generate_spectrum
+        spectrum_hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
+
+=======
         has_rows = self._model.rowCount() > 0
+        main
         if self._btn_enrich is not None:
-            enable_enrich = has_selection and self._can_enrich_metadata
             self._btn_enrich.setEnabled(enable_enrich)
             if enable_enrich:
                 self._btn_enrich.setToolTip("")
             else:
-                hint = self._enrich_disabled_reason or "Configura las APIs para habilitar el enriquecimiento."
-                self._btn_enrich.setToolTip(hint)
+                self._btn_enrich.setToolTip(enrich_hint)
+        if self._action_enrich is not None:
+            self._action_enrich.setEnabled(enable_enrich)
+            if enable_enrich:
+                self._action_enrich.setStatusTip("Busca metadatos en AcoustID y MusicBrainz.")
+            else:
+                self._action_enrich.setStatusTip(enrich_hint)
+
         if self._btn_spectrum is not None:
-            enable_spectrum = has_selection and self._can_generate_spectrum
             self._btn_spectrum.setEnabled(enable_spectrum)
             if enable_spectrum:
                 self._btn_spectrum.setToolTip("")
             else:
-                hint = self._spectrum_disabled_reason or "Instala ffmpeg para generar espectros."
-                self._btn_spectrum.setToolTip(hint)
+                self._btn_spectrum.setToolTip(spectrum_hint)
+        if self._action_spectrum is not None:
+            self._action_spectrum.setEnabled(enable_spectrum)
+            if enable_spectrum:
+                self._action_spectrum.setStatusTip("Genera el espectro de la pista seleccionada.")
+            else:
+                self._action_spectrum.setStatusTip(spectrum_hint)
+
+        if self._action_open_track is not None:
+            self._action_open_track.setEnabled(has_selection)
+        if self._action_reveal_track is not None:
+            self._action_reveal_track.setEnabled(has_selection)
+        if self._action_copy_paths is not None:
+            self._action_copy_paths.setEnabled(has_selection)
+
+        if self._action_clear_search is not None:
+            self._action_clear_search.setEnabled(search_has_text)
+
+        if self._action_select_all is not None:
+            self._action_select_all.setEnabled(has_rows)
+
+        if self._action_refresh is not None:
+            self._action_refresh.setEnabled(self._con is not None)
+
+        if self._action_focus_search is not None:
+            self._action_focus_search.setEnabled(True)
 
         open_tip = "Abrir la pista seleccionada con la aplicación predeterminada del sistema."
         reveal_tip = "Abrir el explorador de archivos en la ubicación de la pista seleccionada."

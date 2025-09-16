@@ -1,4 +1,4 @@
-# SongSearch Organizer (v0.3.1)
+# SongSearch Organizer (v0.3.2)
 
 ![Coverage](assets/coverage-badge.svg)
 
@@ -29,7 +29,7 @@ La raíz del repositorio incluye `requirements.lock` generado con `pip-compile`.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para ver la lista completa de cambios entre versiones.
 
-## ✨ Características (MVP v0.3.1)
+## ✨ Características (MVP v0.3.2)
 
 - **Organizador por plantillas**:  
   `{Genero}/{Año}/{Artista}/{Álbum}/{TrackNo - Título}.{ext}` (personalizable).
@@ -104,7 +104,7 @@ Crea `.env` en la raíz con tus claves:
 
 ```ini
 ACOUSTID_API_KEY=tu_api_key_opcional
-MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.1 (tu_email@ejemplo.com)
+MUSICBRAINZ_USER_AGENT=SongSearchOrganizer/0.3.2 (tu_email@ejemplo.com)
 SPEK_APP_PATH=
 ```
 
