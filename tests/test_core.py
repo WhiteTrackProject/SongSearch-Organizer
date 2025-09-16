@@ -196,7 +196,7 @@ def test_enrich_uses_cached_payload(monkeypatch, tmp_path: Path) -> None:
     )
 
     monkeypatch.setenv("ACOUSTID_API_KEY", "test-key")
-    monkeypatch.setenv("MUSICBRAINZ_USER_AGENT", "SongSearchOrganizer/0.3 (tests@example.com)")
+    monkeypatch.setenv("MUSICBRAINZ_USER_AGENT", "SongSearchOrganizer/0.4.0 (tests@example.com)")
 
     calls = {"acoustid": 0}
 
